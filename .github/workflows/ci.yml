@@ -1,0 +1,45 @@
+# CI for the Hammunition Devices applet.
+#
+# Two jobs, both of which can actually fail. There is deliberately no
+# qmllint job: the qmllint on the development machine is a Qt5 shim that
+# cannot exec and *exits 0 while failing*, so a job running it would pass
+# forever without checking anything. A check nobody can trust is worse than
+# no check. If a Qt6 qmllint is ever available on the runner and verified
+# to go red on a broken file, add it then.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: applet package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Static checks on the package
+        run: python -m unittest discover -s tests -v
+
+  shell:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+      - name: Lint the installers
+        run: shellcheck install.sh uninstall.sh
