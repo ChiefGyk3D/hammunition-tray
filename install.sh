@@ -2,7 +2,7 @@
 # Install the Hammunition Devices applet for the current user.
 #
 # Deliberately NOT run as root. kpackagetool6 installs into the invoking
-# user's ~/.local/share/plasma/plasmoids, and a root install would put the
+# user's $HOME/.local/share/plasma/plasmoids, and a root install would put the
 # package somewhere the operator's Plasma session does not read while
 # leaving root-owned files in their home if they ever ran it wrong.
 # The applet needs no privilege of its own: it polls an unprivileged
@@ -11,7 +11,7 @@ set -euo pipefail
 
 if [[ ${EUID} -eq 0 ]]; then
     echo "Do not run this as root. The applet installs into your own" >&2
-    echo "~/.local/share/plasma/plasmoids and needs no privilege." >&2
+    echo "$HOME/.local/share/plasma/plasmoids and needs no privilege." >&2
     exit 1
 fi
 
