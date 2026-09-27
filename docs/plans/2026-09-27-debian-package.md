@@ -17,7 +17,7 @@
 - `Depends: plasma-workspace (>= 4:6), qml6-module-org-kde-plasma-plasma5support, qml6-module-org-kde-kirigami` (measured on Parrot 7.3).
 - No maintainer scripts.
 - First version `0.1.0`; first tag `v0.1.0`.
-- Actions pinned by commit, as resolved 2026-09-27 with `git ls-remote`: `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1`, `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`. Re-resolve if more than a week has passed.
+- Actions pinned by commit, as resolved 2026-09-27 with `git ls-remote`: `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1`, `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`, `actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0`. Re-resolve if more than a week has passed.
 - A tag reaches shell only through `env:`, never `${{ }}` inside `run:`.
 - Parrot first; other desktops and distributions are out of scope.
 - Commits authored as `19499446+ChiefGyk3D@users.noreply.github.com`, ending with `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`.
@@ -328,7 +328,7 @@ echo "$deb"
 
 - [ ] **Step 4: Run, falsify, commit**
 
-Run: `python3 -m unittest discover -s tests` (all pass). Falsify: `touch plasmoid/package/contents/ui/stray.qml && git add -N` it; `test_exactly_the_listed_files` must still pass (tracked means it ships); now instead create an untracked `plasmoid/package/contents/ui/__pycache__/x.pyc`, confirm the package does not contain it, then delete both.
+Run: `python3 -m unittest discover -s tests` (all pass). Falsify: in `build.sh`, replace the `git ls-files` loop with `cp -r "$repo/plasmoid/package/." "$applet/"`, create an untracked `plasmoid/package/contents/ui/__pycache__/x.pyc`, and confirm `test_exactly_the_listed_files` fails naming it. Restore the loop and delete the file.
 
 ```bash
 git add packaging tests/test_debian_package.py
@@ -410,7 +410,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@<resolve with git ls-remote at execution> # v7.x
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: dist
           path: dist
@@ -422,7 +425,7 @@ jobs:
         run: gh release create "$TAG" dist/* --repo "$REPO" --title "hammunition-tray $TAG" --notes-file <(sed -n "/^## \[${TAG#v}\]/,/^## \[/p" CHANGELOG.md | sed '$d')
 ```
 
-The `download-artifact` pin is resolved at execution with `git ls-remote --tags https://github.com/actions/download-artifact 'refs/tags/v7*'` and written as a full SHA with its tag comment; it is the one action not already pinned in Hill. The `release` job does not check out the repo, so `--notes-file` reads a changelog it does not have: add a checkout step (pinned as above, `persist-credentials: false`) before `publish`.
+`download-artifact` is pinned at v7.0.0 to match `upload-artifact`'s major (resolved 2026-09-27; v8 exists). The checkout in `release` is there because `--notes-file` reads `CHANGELOG.md`.
 
 - [ ] **Step 2: Run the same steps locally**
 
