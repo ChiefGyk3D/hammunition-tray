@@ -14,5 +14,6 @@ fi
 command -v kpackagetool6 >/dev/null || { echo "kpackagetool6 is not on PATH." >&2; exit 1; }
 
 kpackagetool6 --type Plasma/Applet --remove com.chiefgyk3d.hammunition.devices
+rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps/hammunition-devices.svg"
 echo "Removed. The helper and polkit action are untouched; use"
 echo "\`hammunition hardware unapply\` if you want those gone too."

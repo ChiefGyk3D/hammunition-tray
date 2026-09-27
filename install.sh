@@ -30,6 +30,13 @@ else
     kpackagetool6 --type Plasma/Applet --install "${pkg}"
 fi
 
+# The widget list and the tray's settings look the icon up by name, from
+# metadata.json, so it goes into the user's own icon directory as well.
+# The applet itself loads the SVGs from its package and does not need this.
+icon_dir="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
+install -D -m 0644 "${pkg}/contents/icons/hammunition-devices-awake.svg" \
+    "${icon_dir}/hammunition-devices.svg"
+
 echo
 echo "Installed. Add 'Hammunition Devices' to your panel or system tray."
 if [[ ! -x /usr/local/libexec/hammunition-devctl ]]; then
