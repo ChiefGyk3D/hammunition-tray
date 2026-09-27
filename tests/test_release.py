@@ -1,0 +1,48 @@
+"""The release job's version gate, runnable locally."""
+
+import json
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from check_version import check  # noqa: E402
+
+
+class VersionGate(unittest.TestCase):
+    def tree(self, version="0.1.0", changelog="## [0.1.0] - 2026-09-27\n"):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d)
+        meta = d / "plasmoid" / "package"
+        meta.mkdir(parents=True)
+        (meta / "metadata.json").write_text(json.dumps({"KPlugin": {"Version": version}}))
+        (d / "CHANGELOG.md").write_text("# Changelog\n\n" + changelog)
+        return d
+
+    def test_agreeing_tag_passes(self):
+        self.assertEqual(check("v0.1.0", self.tree()), "0.1.0")
+
+    def test_tag_that_disagrees_with_metadata_fails(self):
+        with self.assertRaisesRegex(ValueError, "metadata.json says 0.1.0"):
+            check("v0.2.0", self.tree())
+
+    def test_missing_changelog_section_fails(self):
+        with self.assertRaisesRegex(ValueError, "CHANGELOG.md has no"):
+            check("v0.1.0", self.tree(changelog="## [0.0.9]\n"))
+
+    def test_tag_without_v_fails(self):
+        with self.assertRaises(ValueError):
+            check("0.1.0", self.tree())
+
+    def test_the_repository_itself_agrees_with_its_own_version(self):
+        meta = json.loads((ROOT / "plasmoid/package/metadata.json").read_text())
+        version = meta["KPlugin"]["Version"]
+        self.assertEqual(check("v" + version, ROOT), version)
+
+
+if __name__ == "__main__":
+    unittest.main()
