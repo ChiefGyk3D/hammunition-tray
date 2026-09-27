@@ -8,7 +8,7 @@
         ],
         "Category": "System Information",
         "Description": "Park and wake radio devices Hammunition has catalogued, from the system tray",
-        "Icon": "preferences-system-power",
+        "Icon": "hammunition-devices",
         "Id": "com.chiefgyk3d.hammunition.devices",
         "License": "GPL-3.0-or-later",
         "Name": "Hammunition Devices",

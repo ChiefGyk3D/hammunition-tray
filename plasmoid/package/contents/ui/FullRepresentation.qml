@@ -51,7 +51,7 @@ PlasmaExtras.Representation {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: !root.helperMissing && root.devices !== null && root.devices.length === 0
-            iconName: "preferences-system-power"
+            iconName: Qt.resolvedUrl("../icons/hammunition-devices-awake.svg")
             text: i18n("No parkable device is attached")
             explanation: i18n("A device is parkable when its catalog entry carries a power_control block and it is plugged in now.")
         }

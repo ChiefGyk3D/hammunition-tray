@@ -169,5 +169,57 @@ class Qml(unittest.TestCase):
             )
 
 
+
+ICONS = os.path.join(PKG, "contents", "icons")
+SVG_NS = "{http://www.w3.org/2000/svg}"
+
+
+class Icons(unittest.TestCase):
+    """The penguin icon. Qt's SVG renderer, which Plasma draws icons with,
+    silently ignores clipPath, mask and filter: the first draft clipped the
+    hill to the disc with a clipPath and the hill spilled into the corners
+    on screen while looking right in a browser."""
+
+    UNSUPPORTED = {"clipPath", "mask", "filter", "foreignObject"}
+
+    def svgs(self):
+        return sorted(f for f in os.listdir(ICONS) if f.endswith(".svg"))
+
+    def test_both_states_ship(self):
+        self.assertEqual(
+            self.svgs(),
+            ["hammunition-devices-awake.svg", "hammunition-devices-parked.svg"],
+        )
+
+    def test_no_element_qt_ignores(self):
+        for name in self.svgs():
+            tree = ET.parse(os.path.join(ICONS, name))
+            for el in tree.iter():
+                tag = el.tag.replace(SVG_NS, "")
+                self.assertNotIn(tag, self.UNSUPPORTED, f"{name} uses <{tag}>")
+                self.assertNotIn("clip-path", el.attrib, f"{name} sets clip-path")
+                self.assertNotIn("mask", el.attrib, f"{name} sets mask")
+
+    def test_parked_has_no_signal_arcs(self):
+        # The one visual difference that has to survive at 16 px.
+        awake = read(os.path.join(ICONS, "hammunition-devices-awake.svg"))
+        parked = read(os.path.join(ICONS, "hammunition-devices-parked.svg"))
+        self.assertIn(" A8 8 ", awake)
+        self.assertNotIn(" A8 8 ", parked)
+
+    def test_every_icon_the_qml_names_exists(self):
+        for name in qml_files():
+            for rel in re.findall(r'"\.\./icons/([^"]+)"', read(os.path.join(UI, name))):
+                self.assertTrue(
+                    os.path.exists(os.path.join(ICONS, rel)),
+                    f"{name} names icons/{rel}, which does not exist",
+                )
+
+    def test_install_puts_the_metadata_icon_where_the_name_resolves(self):
+        icon = json.loads(read(METADATA))["KPlugin"]["Icon"]
+        self.assertIn(f"/{icon}.svg", read(os.path.join(ROOT, "install.sh")))
+        self.assertIn(f"/{icon}.svg", read(os.path.join(ROOT, "uninstall.sh")))
+
+
 if __name__ == "__main__":
     unittest.main()
