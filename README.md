@@ -34,20 +34,45 @@ waking one does, and goes through polkit exactly once per action.
 
 ## Install
 
+Any of the three; each needs `hammunition hardware apply` to have been run,
+which installs the helper the switches call.
+
+**Through Hammunition** (once its catalog carries the applet):
+
+```sh
+hammunition install hammunition-tray
+```
+
+**The Debian package**, from the [releases page](https://github.com/ChiefGyk3D/hammunition-tray/releases),
+for every account on the machine. Check it against the release's
+`SHA256SUMS` first:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+sudo apt install ./hammunition-tray_0.1.0_all.deb
+```
+
+It depends on Plasma 6 and the two QML modules the applet imports, one of
+which (`qml6-module-org-kde-plasma-plasma5support`) ships separately from
+Plasma; apt pulls them in.
+
+**A per-user copy**, from a checkout:
+
 ```sh
 ./install.sh
 ```
 
 Runs as **you**, not as root: `kpackagetool6` installs into
-`~/.local/share/plasma/plasmoids`, and the applet needs no privilege of its
-own. Then add *Hammunition Devices* to your panel or system tray.
+`~/.local/share/plasma/plasmoids`. `./uninstall.sh` removes it. A per-user
+copy **shadows** the package, so if you move to the `.deb`, run
+`./uninstall.sh` once.
 
-```sh
-./uninstall.sh
-```
+After any install or upgrade, Plasma keeps the old version loaded until you
+run `systemctl --user restart plasma-plasmashell` or log in again. Then add
+*Hammunition Devices* to your panel or system tray.
 
-removes the applet only. The helper and the polkit action belong to the
-engine — `hammunition hardware unapply` is what removes those.
+Removing the applet never removes the helper or the polkit action; they
+belong to the engine, and `hammunition hardware unapply` removes those.
 
 ## What you will see
 
@@ -61,12 +86,12 @@ engine — `hammunition hardware unapply` is what removes those.
 
 ## Status
 
-Early. The engine half landed in Hammunition as **D-056**; this applet is
-plan 2 of that design. **No park or wake has yet been run against real
-hardware** — not by this applet and not by the CLI it drives. Treat the
-behaviour described above as what the design intends, verified by tests and
-by reading the engine's own output, and not yet as something measured on a
-bench.
+Early (0.1.0). The engine half is Hammunition's **D-056**. Park and wake
+were run from this applet against a u-blox GPS receiver on a Dell Latitude
+5430 Rugged running Parrot 7.3 on 2026-09-27: gpsd let go of the receiver
+within a second of parking and took it back within a second of waking, and
+the fix returned by 74 s (Hammunition's bench record, session 10). No other
+device has been parked yet, and parked state does not yet survive a reboot.
 
 ## Licence
 
