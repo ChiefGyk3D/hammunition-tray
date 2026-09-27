@@ -9,6 +9,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 APPLET = "usr/share/plasma/plasmoids/com.chiefgyk3d.hammunition.devices"
+APPLET_FILES = {
+    "metadata.json",
+    "contents/config/config.qml",
+    "contents/config/main.xml",
+    "contents/icons/hammunition-devices-awake.svg",
+    "contents/icons/hammunition-devices-parked.svg",
+    "contents/ui/CompactRepresentation.qml",
+    "contents/ui/FullRepresentation.qml",
+    "contents/ui/configGeneral.qml",
+    "contents/ui/main.qml",
+}
 
 
 @unittest.skipUnless(shutil.which("dpkg-deb"), "dpkg-deb not installed")
@@ -55,17 +66,26 @@ class DebianPackage(unittest.TestCase):
         self.assertIn("hammunition hardware apply", self.field("Description"))
 
     def test_exactly_the_listed_files(self):
-        tracked = subprocess.run(
-            ["git", "-C", str(ROOT), "ls-files", "plasmoid/package"],
-            capture_output=True, text=True, check=True,
-        ).stdout.split()
-        expected = {APPLET + "/" + t[len("plasmoid/package/"):] for t in tracked}
+        # Written out, not derived from `git ls-files`: derived from the same
+        # source the build copies from, a committed stray file would ship and
+        # this would still pass. A new applet file is added here on purpose.
+        expected = {APPLET + "/" + f for f in APPLET_FILES}
         expected |= {
             "usr/share/icons/hicolor/scalable/apps/hammunition-devices.svg",
             "usr/share/doc/hammunition-tray/copyright",
             "usr/share/doc/hammunition-tray/README.md",
         }
         self.assertEqual(self.files(), expected)
+
+    def test_modes_and_owners_do_not_depend_on_the_builders_umask(self):
+        listing = subprocess.run(
+            ["dpkg-deb", "--contents", str(self.deb)], capture_output=True, text=True, check=True
+        ).stdout
+        for line in listing.splitlines():
+            mode, owner, *_ , path = line.split()
+            self.assertEqual(owner, "root/root", line)
+            want = "drwxr-xr-x" if mode.startswith("d") else "-rw-r--r--"
+            self.assertEqual(mode, want, line)
 
     def test_no_maintainer_scripts(self):
         control = subprocess.run(

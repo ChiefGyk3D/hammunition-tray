@@ -8,6 +8,11 @@
 # filename disagrees with what Plasma shows is the confusion the release
 # check exists to prevent.
 set -euo pipefail
+# Modes in the package must not depend on whoever builds it: under a 0002
+# umask the staged directories came out group-writable, and apt installs
+# them as root exactly as packed. mktemp -d is 0700 regardless, hence the
+# chmod below as well.
+umask 022
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
@@ -19,6 +24,7 @@ version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["KPlu
 
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
+chmod 0755 "$stage"
 
 applet="$stage/usr/share/plasma/plasmoids/com.chiefgyk3d.hammunition.devices"
 mkdir -p "$applet" "$stage/usr/share/icons/hicolor/scalable/apps" \

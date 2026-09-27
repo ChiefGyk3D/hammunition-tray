@@ -9,6 +9,10 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # A dry run: verify and build, install on Parrot, publish nothing. The only
+  # other way to exercise this file is to push a real tag and delete it if
+  # the first run fails.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,7 +29,14 @@ jobs:
       - name: the tag, metadata.json and the changelog agree
         env:
           TAG: ${{ github.ref_name }}
-        run: python3 scripts/check_version.py "$TAG"
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          case "$REF" in
+            refs/tags/v*) python3 scripts/check_version.py "$TAG" ;;
+            # A dry run has no tag; check the changelog against the tree's own version.
+            *) python3 scripts/check_version.py "v$(python3 -c 'import json; print(json.load(open("plasmoid/package/metadata.json"))["KPlugin"]["Version"])')" ;;
+          esac
 
   build:
     name: build, and install on Parrot
@@ -41,7 +52,7 @@ jobs:
       - name: installs on Parrot, files in place, removes cleanly
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD/dist:/dist:ro" docker.io/parrotsec/core:latest bash -c '
+          docker run --rm -e DEBIAN_FRONTEND=noninteractive -v "$PWD/dist:/dist:ro" docker.io/parrotsec/core:latest bash -c '
             set -eux
             apt-get update -qq
             apt-get install -y -qq /dist/hammunition-tray_*_all.deb
@@ -63,6 +74,7 @@ jobs:
   release:
     name: publish
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
