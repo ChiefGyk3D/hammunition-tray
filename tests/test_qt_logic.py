@@ -346,6 +346,15 @@ class Menu(unittest.TestCase):
         self.assertEqual(e.text, "u-blox GNSS receiver (1-4) — kept off")
         self.assertEqual(e.verb, "wake")
 
+    def test_kept_but_awake_still_says_kept_off(self):
+        # FullRepresentation.qml labels from `kept` first; only the switch
+        # shows `parked`. A device re-authorised outside the helper is awake
+        # with its keep rule still in place, and the operator must see both.
+        [e] = [e for e in logic.menu_model(polled(dev(parked=False, kept=True))) if e.kind == "toggle"]
+        self.assertEqual(e.text, "u-blox GNSS receiver (1-4) — kept off")
+        self.assertTrue(e.checked)
+        self.assertEqual(e.verb, "park")
+
     def test_an_unplugged_kept_device_offers_forget_which_is_wake(self):
         state = polled(dev(summary="", parked=None, kept=True, attached=False))
         entries = logic.menu_model(state)

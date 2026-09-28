@@ -223,7 +223,11 @@ def _device_entry(d: Device, acting: bool) -> MenuEntry:
             verb="wake",
             device=d,
         )
-    status = ("kept off" if d.kept else "parked") if d.parked else "awake"
+    # The text follows `kept` first, as FullRepresentation.qml does; the
+    # checkmark alone follows `parked`. A kept device that something woke
+    # outside the helper is awake now and will be parked again at the next
+    # plug-in or boot: D-056 shows intent and reality, never reconciles them.
+    status = "kept off" if d.kept else ("parked" if d.parked else "awake")
     return MenuEntry(
         kind="toggle",
         text=f"{where} — {status}",
