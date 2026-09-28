@@ -81,7 +81,13 @@ class TrayState:
     # are distinguishable.
     devices: tuple[Device, ...] | None = None
     helper_missing: bool = False
+    # The poll's own error, replaced by every poll.
     last_error: str = ""
+    # The last park or wake's error. Kept apart because every action is
+    # followed at once by a poll, and a good poll clears last_error: in
+    # main.qml, which has one lastError, an action's error vanishes within
+    # a moment of appearing. Cleared when the next action starts.
+    action_error: str = ""
     acting: bool = False
     kept_notice_sent: bool = False
 
@@ -176,22 +182,64 @@ def apply_poll(state: TrayState, result: ProcResult) -> tuple[TrayState, str | N
     return state, (", ".join(names) if names else None)
 
 
+# The authentication agent each desktop usually runs, named only where
+# `apt-cache policy` found the package (2026-09-28, Debian 13 and Ubuntu
+# 24.04). xfce-polkit exists in neither; policykit-1-gnome only in Ubuntu
+# 24.04, so Xfce is also offered mate-polkit, which both carry.
+_AGENTS = {
+    "LXQT": "lxqt-policykit",
+    "XFCE": "policykit-1-gnome (Ubuntu) or mate-polkit",
+    "LXDE": "lxpolkit",
+    "MATE": "mate-polkit",
+}
+_ANY_AGENT = "lxpolkit or mate-polkit"
+
+
+def no_agent_message(desktop: str) -> str:
+    """One line for pkexec's "No authentication agent found". ``desktop``
+    is XDG_CURRENT_DESKTOP, a colon-separated list."""
+    package = _ANY_AGENT
+    for name in desktop.split(":"):
+        if name.strip().upper() in _AGENTS:
+            package = _AGENTS[name.strip().upper()]
+            break
+    return (
+        "No polkit authentication agent is running, so no password prompt "
+        f"could appear. Install one ({package}) and log in again."
+    )
+
+
 def begin_action(state: TrayState) -> TrayState:
-    return replace(state, acting=True, last_error="")
+    return replace(state, acting=True, last_error="", action_error="")
 
 
-def apply_action(state: TrayState, result: ProcResult) -> TrayState:
+def apply_action(state: TrayState, result: ProcResult, desktop: str = "") -> TrayState:
     """A park or wake finished. pkexec exits 126 when the prompt is dismissed
     and 127 when authorisation is refused; nothing was written in either
-    case, so neither is an error."""
+    case, so neither is an error.
+
+    One deliberate departure from the applet: 127 whose stderr says no
+    authentication agent was found is reported, naming the desktop's usual
+    agent. Plasma always runs an agent, so the applet never meets this; a
+    minimal Xfce or LXQt session may not, and there every click would do
+    nothing and say nothing. It grants no privilege, it only says why
+    nothing happened.
+
+    Two smaller differences, both a consequence of running without a
+    shell: a pkexec that cannot be started is an error here (the applet's
+    shell exit 127 was silent), and a helper that exists but is not
+    executable reads as not installed in the poll (the applet showed the
+    shell's 126 stderr)."""
     state = replace(state, acting=False)
     if not result.started:
-        return replace(state, last_error="Could not run pkexec; is it installed?")
+        return replace(state, action_error="Could not run pkexec; is it installed?")
     if result.crashed:
-        return replace(state, last_error="Action failed (pkexec stopped unexpectedly)")
+        return replace(state, action_error="Action failed (pkexec stopped unexpectedly)")
+    if result.code == 127 and "no authentication agent" in result.stderr.lower():
+        return replace(state, action_error=no_agent_message(desktop))
     if result.code not in (0, 126, 127):
         err = result.stderr.strip() or f"Action failed (exit {result.code})"
-        return replace(state, last_error=err)
+        return replace(state, action_error=err)
     return state
 
 
@@ -267,8 +315,9 @@ def menu_model(state: TrayState) -> list[MenuEntry]:
         ]
     else:
         entries += [_device_entry(d, state.acting) for d in state.devices]
-    if state.last_error:
-        entries.append(MenuEntry("error", state.last_error))
+    for error in (state.last_error, state.action_error):
+        if error:
+            entries.append(MenuEntry("error", error))
     if not state.helper_missing:
         entries += [MenuEntry("separator"), MenuEntry("footer", FOOTER)]
     entries += [MenuEntry("separator"), MenuEntry("quit", "Quit", enabled=True)]

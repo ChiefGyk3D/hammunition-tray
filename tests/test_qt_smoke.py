@@ -120,7 +120,20 @@ class Smoke(unittest.TestCase):
         tray.refresh()
         self.action(tray, "u-blox GNSS receiver (1-4)").trigger()
         self.assertTrue(self.action(tray, "u-blox GNSS receiver (1-4)").isChecked())
-        self.assertEqual(tray.state.last_error, "")
+        self.assertEqual(tray.state.action_error, "")
+
+    def test_no_polkit_agent_is_shown(self):
+        from hammunition_tray_qt.logic import ProcResult
+
+        tray, runner = self.make([row()])
+        runner.answers["park"] = ProcResult(
+            started=True,
+            code=127,
+            stderr="Error executing command as another user: No authentication agent found.\n",
+        )
+        tray.refresh()
+        self.action(tray, "u-blox GNSS receiver (1-4)").trigger()
+        self.assertIn("No polkit authentication agent is running", tray.state.action_error)
 
     def test_forget_is_wake(self):
         tray, runner = self.make([row(summary="", parked=None, kept=True, attached=False)])

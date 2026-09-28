@@ -249,37 +249,87 @@ class KeptNotice(unittest.TestCase):
 
 class Action(unittest.TestCase):
     def test_begin_marks_acting_and_clears_the_error(self):
-        s = logic.begin_action(TrayState(last_error="old"))
+        s = logic.begin_action(TrayState(last_error="old", action_error="older"))
         self.assertTrue(s.acting)
         self.assertEqual(s.last_error, "")
+        self.assertEqual(s.action_error, "")
+
+    def test_an_action_error_survives_the_repoll_that_follows_it(self):
+        # Every action is followed at once by a poll. If a good poll cleared
+        # the action's error, it would vanish before anybody could read it --
+        # which is what main.qml does with its single lastError.
+        s = logic.apply_action(TrayState(acting=True), ok(code=2, stderr="error: ambiguous"))
+        s, _ = logic.apply_poll(s, ok(json.dumps([dev()])))
+        self.assertEqual(s.action_error, "error: ambiguous")
+        self.assertIn("error: ambiguous", [e.text for e in logic.menu_model(s) if e.kind == "error"])
 
     def test_success(self):
         s = logic.apply_action(logic.begin_action(TrayState()), ok())
         self.assertFalse(s.acting)
-        self.assertEqual(s.last_error, "")
+        self.assertEqual(s.action_error, "")
 
     def test_a_dismissed_or_refused_prompt_is_not_an_error(self):
         for code in (126, 127):
             s = logic.apply_action(logic.begin_action(TrayState()), ok(code=code, stderr="Not authorized"))
             self.assertFalse(s.acting)
-            self.assertEqual(s.last_error, "", code)
+            self.assertEqual(s.action_error, "", code)
+
+    NO_AGENT = "Error executing command as another user: No authentication agent found.\n"
+
+    def test_no_polkit_agent_is_said_once_with_the_desktops_agent(self):
+        # A deliberate departure from the applet: Plasma always runs an
+        # agent, the desktops this tray is for may not, and without one
+        # every click would do nothing and say nothing.
+        for desktop, package in (
+            ("LXQt", "lxqt-policykit"),
+            ("XFCE", "policykit-1-gnome"),
+            ("XFCE", "mate-polkit"),
+            ("LXDE", "lxpolkit"),
+            ("MATE", "mate-polkit"),
+            ("X-Cinnamon", "mate-polkit"),
+            ("", "lxpolkit"),
+        ):
+            with self.subTest(desktop=desktop, package=package):
+                s = logic.apply_action(
+                    logic.begin_action(TrayState()), ok(code=127, stderr=self.NO_AGENT), desktop
+                )
+                self.assertFalse(s.acting)
+                self.assertIn("No polkit authentication agent is running", s.action_error)
+                self.assertIn(package, s.action_error)
+                self.assertNotIn("\n", s.action_error)
+
+    def test_xdg_current_desktop_is_a_colon_list(self):
+        s = logic.apply_action(TrayState(acting=True), ok(code=127, stderr=self.NO_AGENT), "ubuntu:LXQt")
+        self.assertIn("lxqt-policykit", s.action_error)
+
+    def test_only_packages_measured_to_exist_are_named(self):
+        # apt-cache policy, 2026-09-28: xfce-polkit exists in neither Debian 13
+        # nor Ubuntu 24.04; policykit-1-gnome only in Ubuntu 24.04.
+        for desktop in ("XFCE", "LXQt", "LXDE", "MATE", ""):
+            s = logic.apply_action(TrayState(acting=True), ok(code=127, stderr=self.NO_AGENT), desktop)
+            self.assertNotIn("xfce-polkit", s.action_error)
+
+    def test_every_other_126_or_127_stays_silent(self):
+        for code, err in ((127, "Not authorized.\n"), (127, ""), (126, self.NO_AGENT), (126, "")):
+            s = logic.apply_action(TrayState(acting=True), ok(code=code, stderr=err), "XFCE")
+            self.assertEqual(s.action_error, "", (code, err))
 
     def test_anything_else_shows_stderr(self):
         s = logic.apply_action(TrayState(acting=True), ok(code=2, stderr="error: ambiguous\n"))
-        self.assertEqual(s.last_error, "error: ambiguous")
+        self.assertEqual(s.action_error, "error: ambiguous")
 
     def test_without_stderr_the_exit_code(self):
         s = logic.apply_action(TrayState(acting=True), ok(code=3))
-        self.assertEqual(s.last_error, "Action failed (exit 3)")
+        self.assertEqual(s.action_error, "Action failed (exit 3)")
 
     def test_pkexec_that_cannot_start(self):
         s = logic.apply_action(TrayState(acting=True), ProcResult(started=False))
         self.assertFalse(s.acting)
-        self.assertIn("pkexec", s.last_error)
+        self.assertIn("pkexec", s.action_error)
 
     def test_a_crash_is_an_error(self):
         s = logic.apply_action(TrayState(acting=True), ProcResult(started=True, crashed=True, code=0))
-        self.assertNotEqual(s.last_error, "")
+        self.assertNotEqual(s.action_error, "")
 
 
 class IconAndTooltip(unittest.TestCase):

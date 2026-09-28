@@ -12,6 +12,7 @@ as JSON, never passed on to anything that runs.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -147,7 +148,7 @@ class Tray(QObject):
         try:
             program, args = logic.action_argv(entry.verb, entry.device)
         except ValueError as exc:
-            self.state = replace(self.state, last_error=str(exc))
+            self.state = replace(self.state, action_error=str(exc))
             self._render(force=True)
             return
         self.state = logic.begin_action(self.state)
@@ -155,7 +156,8 @@ class Tray(QObject):
         self.runner.run(program, args, self._acted)
 
     def _acted(self, result: ProcResult) -> None:
-        self.state = logic.apply_action(self.state, result)
+        desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
+        self.state = logic.apply_action(self.state, result, desktop)
         # Forced: a dismissed prompt leaves the model as it was before the
         # click, but the checkable item toggled itself when clicked.
         self._render(force=True)
