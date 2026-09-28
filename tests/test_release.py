@@ -83,6 +83,9 @@ class QtInTheWorkflows(unittest.TestCase):
         self.assertIn("apt-get purge -y -qq hammunition-tray-qt", build)
         self.assertIn("test ! -e /usr/share/hammunition-tray-qt", build)
 
+    def test_shellcheck_covers_the_package_build(self):
+        self.assertIn("shellcheck install.sh uninstall.sh packaging/debian/build.sh", self.ci)
+
     def test_both_packages_are_checksummed(self):
         build = self.release[self.release.index("\n  build:"):self.release.index("\n  release:")]
         checks = build[build.index("name: checksums"):]
