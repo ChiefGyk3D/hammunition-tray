@@ -1,0 +1,16 @@
+#!/usr/bin/python3 -I
+# Hammunition Devices - tray for desktops other than Plasma
+# Copyright (C) 2026 ChiefGyk3D
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The package installs the module under /usr/share, outside dist-packages,
+# because it is an application rather than a library. -I keeps PYTHONPATH
+# and the user's site-packages out of the import path, so the only
+# hammunition_tray_qt this can load is the one the package put there.
+import sys
+
+sys.path.insert(0, "/usr/share/hammunition-tray-qt")
+
+from hammunition_tray_qt.tray import main  # noqa: E402
+
+sys.exit(main())
