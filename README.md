@@ -156,10 +156,8 @@ installs it.
   followed at once by a re-read of the device state. Both used to share
   one error line, which that re-read cleared, so a failed park or wake
   showed its error for a moment at most. The two are kept apart now.
-
-**One difference left, on purpose:** the tray runs `/usr/bin/pkexec` by
-its absolute path, never looked up through `PATH`; the applet still runs
-`pkexec` through its command line.
+- **pkexec by its absolute path.** Both run `/usr/bin/pkexec`, never one
+  looked up through `PATH`.
 
 **GNOME has no system tray** unless the AppIndicator extension is enabled
 (`gnome-shell-extension-appindicator` on Debian and Ubuntu). Without it the

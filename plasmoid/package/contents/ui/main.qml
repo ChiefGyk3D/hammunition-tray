@@ -101,7 +101,7 @@ PlasmoidItem {
         acting = true;
         lastError = "";
         actionError = "";
-        exec.run("pkexec " + helper + " " + (park ? "park " : "wake ") + target(device));
+        exec.run("/usr/bin/pkexec " + helper + " " + (park ? "park " : "wake ") + target(device));
     }
 
     // An unplugged kept device has nothing to wake, but the same "wake"
@@ -112,7 +112,7 @@ PlasmoidItem {
         acting = true;
         lastError = "";
         actionError = "";
-        exec.run("pkexec " + helper + " wake " + target(device));
+        exec.run("/usr/bin/pkexec " + helper + " wake " + target(device));
     }
 
     Plasma5Support.DataSource {

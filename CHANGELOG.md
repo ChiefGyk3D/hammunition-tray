@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-28
+
 - **`hammunition-tray-qt`**, a second package from the same build: the
   applet's switch as a Qt tray icon for Xfce, LXQt, LXDE, MATE and Cinnamon.
   Same helper, same prompts, same texts; one menu item per parkable device,
@@ -13,6 +15,9 @@
   followed at once by a re-read of the device state, which cleared the one
   error line the two shared, so a failed action's error vanished as it
   appeared. An action's error now stays until the next action.
+- Both front ends run `/usr/bin/pkexec` by its absolute path, and both say
+  so when no polkit authentication agent is running, naming the package
+  that provides one; any other dismissed or refused prompt stays silent.
 - When pkexec finds no polkit authentication agent, the applet and the
   tray say so in one line and name an agent package, instead of every click
   silently doing nothing. Other dismissed or refused prompts stay silent.
