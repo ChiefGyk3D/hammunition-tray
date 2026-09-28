@@ -221,5 +221,27 @@ class Icons(unittest.TestCase):
         self.assertIn(f"/{icon}.svg", read(os.path.join(ROOT, "uninstall.sh")))
 
 
+class KeptOff(unittest.TestCase):
+    def test_the_notice_is_sent_at_most_once_per_load(self):
+        main = read(os.path.join(UI, "main.qml"))
+        self.assertIn("import org.kde.notification", main)
+        self.assertIn("property bool keptNoticeSent: false", main)
+        self.assertRegex(main, r"if \(!keptNoticeSent[^)]*\)")
+        self.assertIn("keptNoticeSent = true", main)
+
+    def test_an_absent_device_gets_no_switch(self):
+        full = read(os.path.join(UI, "FullRepresentation.qml"))
+        self.assertIn("visible: modelData.attached !== false", full)
+
+    def test_an_absent_kept_device_can_be_forgotten(self):
+        full = read(os.path.join(UI, "FullRepresentation.qml"))
+        self.assertIn('i18n("Forget")', full)
+        self.assertIn("root.forget(modelData)", full)
+
+    def test_the_package_depends_on_the_notification_module(self):
+        build = read(os.path.join(ROOT, "packaging", "debian", "build.sh"))
+        self.assertIn("qml6-module-org-kde-notifications", build)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -61,6 +61,7 @@ class DebianPackage(unittest.TestCase):
             "plasma-workspace (>= 4:6)",
             "qml6-module-org-kde-plasma-plasma5support",
             "qml6-module-org-kde-kirigami",
+            "qml6-module-org-kde-notifications",
         ):
             self.assertIn(dep, depends)
         self.assertIn("hammunition hardware apply", self.field("Description"))

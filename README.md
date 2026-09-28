@@ -8,8 +8,11 @@ its interfaces and the USB port can suspend; waking writes `1`. On a laptop
 that is the difference between a GNSS receiver drawing power all day and
 drawing none, without unplugging anything.
 
-**Parked state is not saved. A reboot wakes everything.** There is no state
-file to go stale and nothing to reconcile at boot.
+**A parked device can now be kept off across a reboot**, by Hammunition's
+engine rather than this applet: the switch calls the same helper either way,
+and a device the engine is keeping off shows "kept off" here. That
+reboot-persistence has not yet been measured on real hardware by this
+applet — see Status below.
 
 ## What this is, and what it is not
 
@@ -49,12 +52,12 @@ for every account on the machine. Check it against the release's
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-sudo apt install ./hammunition-tray_0.1.0_all.deb
+sudo apt install ./hammunition-tray_0.2.0_all.deb
 ```
 
-It depends on Plasma 6 and the two QML modules the applet imports, one of
-which (`qml6-module-org-kde-plasma-plasma5support`) ships separately from
-Plasma; apt pulls them in.
+It depends on Plasma 6 and the QML modules the applet imports, including two
+that ship separately from Plasma (`qml6-module-org-kde-plasma-plasma5support`
+and `qml6-module-org-kde-notifications`); apt pulls them in.
 
 **A per-user copy**, from a checkout:
 
@@ -79,6 +82,14 @@ belong to the engine, and `hammunition hardware unapply` removes those.
 - **A switch per parkable attached device**, labelled with the catalog's own
   summary and its bus address. The address is shown because two receivers of
   one class share a catalog name and differ only by address.
+- **"Kept off"** on a device's second line when the engine is keeping it off
+  across reboots; **"kept off, not attached"** and no switch when that same
+  device is unplugged, since there is nothing left to park or wake.
+- **A Forget button** in place of the switch for an unplugged kept device.
+  It clears the kept flag and drops the device off the list — for a device
+  you are not going to plug back in.
+- **One desktop notice, at most once per login**, naming any device that came
+  back kept off.
 - **The tray icon changes** when anything is parked.
 - **A dismissed password prompt leaves the switch where it was.** Nothing was
   written, so nothing moves — the switch shows the device's real state, not
@@ -86,12 +97,16 @@ belong to the engine, and `hammunition hardware unapply` removes those.
 
 ## Status
 
-Early (0.1.0). The engine half is Hammunition's **D-056**. Park and wake
-were run from this applet against a u-blox GPS receiver on a Dell Latitude
-5430 Rugged running Parrot 7.3 on 2026-09-27: gpsd let go of the receiver
-within a second of parking and took it back within a second of waking, and
-the fix returned by 74 s (Hammunition's bench record, session 10). No other
-device has been parked yet, and parked state does not yet survive a reboot.
+0.2.0. The engine half is Hammunition's **D-056**. Park and wake were run
+from this applet against a u-blox GPS receiver on a Dell Latitude 5430
+Rugged running Parrot 7.3 on 2026-09-27: gpsd let go of the receiver within
+a second of parking and took it back within a second of waking, and the fix
+returned by 74 s (Hammunition's bench record, session 10). No other device
+has been parked yet. The engine can now keep a device off across a reboot,
+but this applet has not yet had that measured against real hardware across
+an actual reboot — the "kept off" label and the Forget action are built and
+tested against the helper's JSON shape, not against a machine that has been
+rebooted with a device kept off.
 
 ## Licence
 
