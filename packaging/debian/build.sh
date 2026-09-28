@@ -46,7 +46,7 @@ Section: kde
 Priority: optional
 Architecture: all
 Installed-Size: $size
-Depends: plasma-workspace (>= 4:6), qml6-module-org-kde-plasma-plasma5support, qml6-module-org-kde-kirigami
+Depends: plasma-workspace (>= 4:6), qml6-module-org-kde-plasma-plasma5support, qml6-module-org-kde-kirigami, qml6-module-org-kde-notifications
 Maintainer: ChiefGyk3D <19499446+ChiefGyk3D@users.noreply.github.com>
 Homepage: https://github.com/ChiefGyk3D/hammunition-tray
 Description: KDE Plasma tray switches for Hammunition's parkable radio devices

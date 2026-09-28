@@ -13,6 +13,7 @@ import QtQuick
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasma5support as Plasma5Support
+import org.kde.notification
 
 PlasmoidItem {
     id: root
@@ -36,14 +37,42 @@ PlasmoidItem {
     property string lastError: ""
     property bool acting: false
 
+    // True once the login notice has been sent for this load of the applet.
+    // A poll runs every few seconds; without this guard the same kept
+    // devices would renotify on every tick rather than once per login.
+    property bool keptNoticeSent: false
+
     readonly property int parkedCount: {
         if (!devices) return 0;
         let n = 0;
-        for (const d of devices) if (d.parked) n += 1;
+        for (const d of devices) if (d.attached !== false && d.parked) n += 1;
         return n;
     }
 
     readonly property bool anyParked: parkedCount > 0
+
+    Notification {
+        id: keptNotice
+        componentName: "plasma_workspace"
+        eventId: "notification"
+        iconName: "hammunition-devices"
+        title: i18n("Kept off")
+    }
+
+    // Sent once, the first time devices come back carrying a kept-but-off
+    // device -- across reboots, not across every poll tick.
+    function noticeKept() {
+        if (!keptNoticeSent && devices) {
+            keptNoticeSent = true;
+            const names = devices
+                .filter(d => d.attached !== false && d.parked && d.kept)
+                .map(d => d.summary || d.name);
+            if (names.length > 0) {
+                keptNotice.text = names.join(", ");
+                keptNotice.sendEvent();
+            }
+        }
+    }
 
     // `state` needs no privilege -- reading sysfs does not, only writing does
     // -- so the poll runs the helper directly and no prompt appears for it.
@@ -64,6 +93,16 @@ PlasmoidItem {
         acting = true;
         lastError = "";
         exec.run("pkexec " + helper + " " + (park ? "park " : "wake ") + target(device));
+    }
+
+    // An unplugged kept device has nothing to wake, but the same "wake"
+    // verb clears its kept flag -- that is what lets it drop off the list
+    // instead of showing "kept off" forever for a device that is gone.
+    function forget(device) {
+        if (acting) return;
+        acting = true;
+        lastError = "";
+        exec.run("pkexec " + helper + " wake " + target(device));
     }
 
     Plasma5Support.DataSource {
@@ -103,6 +142,7 @@ PlasmoidItem {
             try {
                 devices = JSON.parse(stdout);
                 lastError = "";
+                root.noticeKept();
             } catch (e) {
                 // The helper always prints a JSON array, including an empty
                 // one, so a parse failure means something else answered.

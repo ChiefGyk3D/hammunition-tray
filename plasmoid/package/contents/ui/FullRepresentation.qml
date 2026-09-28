@@ -81,8 +81,14 @@ PlasmaExtras.Representation {
                         opacity: 0.7
                         font: Kirigami.Theme.smallFont
                         // The bus address is what distinguishes two of a kind,
-                        // and it is what the operator would type.
-                        text: i18n("%1 at %2", modelData.name, modelData.address)
+                        // and it is what the operator would type. A kept
+                        // device says so whether or not it is still plugged
+                        // in, and an absent one says that too.
+                        text: modelData.attached === false
+                            ? i18n("%1 at %2, kept off, not attached", modelData.name, modelData.address)
+                            : (modelData.kept
+                                ? i18n("%1 at %2, kept off", modelData.name, modelData.address)
+                                : i18n("%1 at %2", modelData.name, modelData.address))
                     }
                 }
 
@@ -91,6 +97,10 @@ PlasmaExtras.Representation {
                     // immediately on toggle. A dismissed polkit prompt
                     // therefore leaves the switch showing the truth rather
                     // than the intent -- nothing was written, so nothing moves.
+                    //
+                    // Hidden for a device that is no longer attached: there is
+                    // nothing to park or wake, only to forget.
+                    visible: modelData.attached !== false
                     checked: !modelData.parked
                     enabled: !root.acting
                     onToggled: {
@@ -98,6 +108,16 @@ PlasmaExtras.Representation {
                         checked = Qt.binding(() => !modelData.parked);
                         root.act(modelData, !wantAwake);
                     }
+                }
+
+                PlasmaComponents.Button {
+                    // The only action left for a kept device that has been
+                    // unplugged: "wake" on an absent device clears its kept
+                    // flag, which is what drops it off this list.
+                    visible: modelData.attached === false
+                    enabled: !root.acting
+                    text: i18n("Forget")
+                    onClicked: root.forget(modelData)
                 }
             }
         }
@@ -116,9 +136,11 @@ PlasmaExtras.Representation {
             wrapMode: Text.WordWrap
             opacity: 0.7
             font: Kirigami.Theme.smallFont
-            // Stated because it is the single most surprising property of the
-            // feature, and the one that makes it safe to experiment with.
-            text: i18n("Parked state is not saved. A reboot wakes everything.")
+            // Stated because it used to be the single most surprising
+            // property of the feature; the engine can now keep a device
+            // off across reboots (Hammunition D-056), so the sentence no
+            // longer claims a reboot always wakes everything.
+            text: i18n("Off stays off across reboots until you turn it back on.")
         }
     }
 }
