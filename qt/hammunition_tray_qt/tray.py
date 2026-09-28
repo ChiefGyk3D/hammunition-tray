@@ -85,10 +85,19 @@ class QtRunner:
         proc.start()
 
 
+# A helper refusal can list every attached device; one menu line of that
+# length is wider than the screen. The whole text goes in the tooltip.
+MENU_TEXT_MAX = 120
+
+
 def _menu_text(text: str) -> str:
     # QAction treats & as a mnemonic marker and a tab as the shortcut column;
-    # a device summary or an error from stderr is text, not markup.
-    return " ".join(text.replace("&", "&&").split())
+    # a device summary or an error from stderr is text, not markup. Elided
+    # before escaping, so a && is never cut in half.
+    flat = " ".join(text.split())
+    if len(flat) > MENU_TEXT_MAX:
+        flat = flat[: MENU_TEXT_MAX - 1] + "…"
+    return flat.replace("&", "&&")
 
 
 class Tray(QObject):
@@ -101,6 +110,7 @@ class Tray(QObject):
         self._model: list[MenuEntry] | None = None
 
         self.menu = QMenu()
+        self.menu.setToolTipsVisible(True)
         self.icon = QSystemTrayIcon()
         self.icon.setContextMenu(self.menu)
         self.icon.activated.connect(self._activated)
@@ -190,6 +200,7 @@ class Tray(QObject):
                 self.menu.addSeparator()
                 continue
             action = QAction(_menu_text(entry.text), self.menu)
+            action.setToolTip(entry.text)
             action.setEnabled(entry.enabled)
             if entry.kind == "toggle":
                 action.setCheckable(True)

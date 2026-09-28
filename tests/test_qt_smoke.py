@@ -153,6 +153,20 @@ class Smoke(unittest.TestCase):
         tray.refresh()
         self.assertIn("R&&D receiver (1-4) — awake", self.texts(tray))
 
+    def test_a_long_error_is_elided_in_the_menu_and_whole_in_its_tooltip(self):
+        from hammunition_tray_qt.logic import ProcResult
+
+        long = "error: refusing; attached: " + ", ".join(f"gnss-{i}@1-{i}" for i in range(60))
+        tray, runner = self.make([row()])
+        runner.answers["park"] = ProcResult(started=True, code=2, stderr=long)
+        tray.refresh()
+        self.action(tray, "u-blox GNSS receiver (1-4)").trigger()
+        [a] = [a for a in tray.menu.actions() if a.text().startswith("error: refusing")]
+        self.assertLessEqual(len(a.text()), 121)
+        self.assertTrue(a.text().endswith("…"))
+        self.assertEqual(a.toolTip(), long)
+        self.assertTrue(tray.menu.toolTipsVisible())
+
     def test_helper_missing(self):
         from hammunition_tray_qt.logic import ProcResult
 
