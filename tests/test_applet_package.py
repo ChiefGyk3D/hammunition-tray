@@ -245,3 +245,44 @@ class KeptOff(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActionErrors(unittest.TestCase):
+    """An action is followed at once by a poll. When one lastError served
+    both, the poll cleared the action's error as it appeared, so a failed
+    park or wake showed nothing. The two are kept apart now."""
+
+    def poll_branch(self):
+        main = read(os.path.join(UI, "main.qml"))
+        start = main.index('if (source.indexOf(" state") !== -1')
+        end = main.index("// A park or wake finished", start)
+        return main[start:end]
+
+    def action_branch(self):
+        main = read(os.path.join(UI, "main.qml"))
+        start = main.index("// A park or wake finished")
+        return main[start:main.index("\n    }", start)]
+
+    def test_the_poll_never_touches_the_action_error(self):
+        self.assertNotIn("actionError", self.poll_branch())
+
+    def test_an_action_writes_its_error_to_its_own_property(self):
+        action = self.action_branch()
+        self.assertIn("actionError = stderr", action)
+        self.assertNotIn("lastError", action)
+
+    def test_the_next_action_clears_it(self):
+        main = read(os.path.join(UI, "main.qml"))
+        for fn in ("act", "forget"):
+            body = re.search(rf"function {fn}\([^)]*\)\s*\{{(.*?)\n    \}}", main, re.S).group(1)
+            self.assertIn('actionError = "";', body, fn)
+
+    def test_the_popup_shows_it(self):
+        full = read(os.path.join(UI, "FullRepresentation.qml"))
+        self.assertIn("text: root.actionError", full)
+
+    def test_no_polkit_agent_is_said(self):
+        # Parity with the Qt tray; on Plasma the KDE agent is normally there.
+        action = self.action_branch()
+        self.assertIn("no authentication agent", action)
+        self.assertIn("polkit-kde-agent-1", action)

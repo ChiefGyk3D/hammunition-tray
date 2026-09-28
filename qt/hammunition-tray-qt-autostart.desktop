@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hammunition Devices
+Comment=Park and wake radio devices Hammunition has catalogued, from the system tray
+Exec=hammunition-tray-qt --wait 60
+TryExec=hammunition-tray-qt
+Icon=hammunition-tray-qt-awake
+Terminal=false
+NoDisplay=true
+NotShowIn=KDE;
+X-LXQt-Need-Tray=true

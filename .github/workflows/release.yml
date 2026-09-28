@@ -1,7 +1,7 @@
 # Cut a release when a v* tag is pushed. The first job refuses a tag that
-# disagrees with the tree; the second builds the .deb and installs it on
-# Parrot before anything is published; the third publishes it with
-# SHA256SUMS. Actions are pinned by commit (resolved with git ls-remote on
+# disagrees with the tree; the second builds both .debs (the Plasma applet
+# and hammunition-tray-qt) and installs and removes each on Parrot before
+# anything is published; the third publishes both with SHA256SUMS. Actions are pinned by commit (resolved with git ls-remote on
 # 2026-09-27), and the tag reaches shell only through env, never through
 # ${{ }} inside run: a tag is an attacker-shaped string in general.
 name: release
@@ -62,9 +62,28 @@ jobs:
             test -f /usr/share/icons/hicolor/scalable/apps/hammunition-devices.svg
             apt-get remove -y -qq hammunition-tray
             test ! -e "$d"
+            apt-get install -y -qq /dist/hammunition-tray-qt_*_all.deb
+            test -x /usr/bin/hammunition-tray-qt
+            test -f /usr/share/icons/hicolor/scalable/apps/hammunition-tray-qt-awake.svg
+            grep -qx "NotShowIn=KDE;" /etc/xdg/autostart/hammunition-tray-qt.desktop
+            # No tray in a container: one line on stderr and exit 0, which
+            # also proves the launcher imports the installed module.
+            out="$(QT_QPA_PLATFORM=offscreen timeout 60 hammunition-tray-qt 2>&1)"
+            echo "$out" | grep -q "no system tray"
+            apt-get remove -y -qq hammunition-tray-qt
+            test ! -e /usr/bin/hammunition-tray-qt
+            test ! -e /usr/share/hammunition-tray-qt
+            apt-get purge -y -qq hammunition-tray-qt
+            test ! -e /etc/xdg/autostart/hammunition-tray-qt.desktop
           '
       - name: checksums
-        run: cd dist && sha256sum ./* > SHA256SUMS && cat SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd dist
+          test -f hammunition-tray_*_all.deb
+          test -f hammunition-tray-qt_*_all.deb
+          test "$(ls ./*.deb | wc -l)" -eq 2
+          sha256sum ./* > SHA256SUMS && cat SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist

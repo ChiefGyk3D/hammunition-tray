@@ -1,7 +1,9 @@
 # Hammunition Devices
 
 A Plasma 6 system-tray applet for parking and waking the radio devices
-[Hammunition](https://github.com/ChiefGyk3D/Hammunition) has catalogued.
+[Hammunition](https://github.com/ChiefGyk3D/Hammunition) has catalogued,
+and the same switch as a tray icon for Xfce, LXQt, LXDE, MATE and Cinnamon
+([below](#xfce-lxqt-lxde-mate-cinnamon-the-qt-tray)).
 
 Parking a device writes `0` to its sysfs `authorized`, so the kernel drops
 its interfaces and the USB port can suspend; waking writes `1`. On a laptop
@@ -94,6 +96,86 @@ belong to the engine, and `hammunition hardware unapply` removes those.
 - **A dismissed password prompt leaves the switch where it was.** Nothing was
   written, so nothing moves — the switch shows the device's real state, not
   what you asked for.
+
+## Xfce, LXQt, LXDE, MATE, Cinnamon: the Qt tray
+
+The Plasma applet only runs in Plasma. Every other desktop with a system
+tray gets **`hammunition-tray-qt`**, a second package from the same release
+and version: a tray icon whose menu does exactly what the applet does. It
+is a second client of the same helper, so nothing about privilege differs —
+the poll asks for no password, and each park or wake is one polkit prompt
+for `pkexec /usr/local/libexec/hammunition-devctl park|wake NAME@ADDRESS`.
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+sudo apt install ./hammunition-tray-qt_*_all.deb
+```
+
+It depends on `python3 (>= 3.11)`, `python3-pyqt6` and `pkexec` (or the
+older `policykit-1`); apt pulls them in. Measured with `apt-cache policy`
+on 2026-09-28: Debian 13 (as Parrot 7) offers `python3-pyqt6` 6.9.0 and
+`pkexec` 126, and has no `policykit-1` at all; Ubuntu 24.04 offers
+`python3-pyqt6` 6.6.1 and both names. As with the applet,
+`hammunition hardware apply` must have been run first.
+
+**It starts at login on every desktop except Plasma**, from
+`/etc/xdg/autostart/hammunition-tray-qt.desktop`, which carries
+`NotShowIn=KDE;` so a machine with both Plasma and Xfce never shows two
+trays in Plasma. To start it by hand, *Hammunition Devices* is in the
+application menu, or run `hammunition-tray-qt`. At login it waits up to a
+minute for the panel to appear; a second copy in the same session exits.
+
+**What you will see:** the icon's menu (right click; left click is meant
+to open it too, but that has not yet been tried on a real panel). Each
+parkable attached device is a checkable item, *summary (address) — awake*,
+*parked* or *kept off*; clicking it parks or wakes. *Kept off* is shown
+whenever the engine is keeping the device off, even if something has woken
+it since; the checkmark always shows whether it is awake now, as the
+applet's switch does. An unplugged kept device shows *Forget*, which clears
+its kept flag. The rest is the applet's: the icon goes grey when anything
+is parked, the tooltip says how many, one *Kept off* notification at most
+per login, a dismissed or refused password prompt changes nothing and says
+nothing, and a missing helper is a sentence naming the command that
+installs it.
+
+**Two rules the tray brought, which the applet now follows too:**
+
+- **No polkit agent is said, not swallowed.** A dismissed or refused
+  password prompt stays silent, since nothing was written. But when pkexec
+  reports *No authentication agent found*, every click would otherwise do
+  nothing and say nothing, so both say so in one line and name an agent
+  package. Plasma normally runs its own agent (`polkit-kde-agent-1`); a
+  minimal Xfce or LXQt session may run none. The tray names the desktop's
+  usual one: `lxqt-policykit` on LXQt, `policykit-1-gnome` (Ubuntu) or
+  `mate-polkit` on Xfce, `lxpolkit` on LXDE, `mate-polkit` on MATE. Those
+  are the ones `apt-cache policy` found on Debian 13 or Ubuntu 24.04 on
+  2026-09-28; `xfce-polkit` is in neither. Install one and log in again.
+  It grants nothing — it only says why nothing happened — and neither
+  package pulls an agent in.
+- **An action's error stays until the next action.** Every park or wake is
+  followed at once by a re-read of the device state. Both used to share
+  one error line, which that re-read cleared, so a failed park or wake
+  showed its error for a moment at most. The two are kept apart now.
+- **pkexec by its absolute path.** Both run `/usr/bin/pkexec`, never one
+  looked up through `PATH`.
+
+**GNOME has no system tray** unless the AppIndicator extension is enabled
+(`gnome-shell-extension-appindicator` on Debian and Ubuntu). Without it the
+tray prints one line to stderr and exits 0 — it never crash-loops. With it,
+the icon appears in the top bar like any other.
+
+**To stop it starting at login** for one account only, copy the autostart
+file to `~/.config/autostart/` and add `Hidden=true` to the copy. `apt
+remove` leaves the system autostart file in place (it is a conffile) but
+it no longer starts anything, because the program it names has gone;
+`apt purge` removes it.
+
+**Measured so far:** the tray has run in a Plasma 6 Wayland session
+against the real helper without an error, and headless — no tray, one line,
+exit 0 — installed from the package in a Parrot container. It has not yet
+been run in an Xfce, LXQt, LXDE, MATE or Cinnamon session; those panels
+are expected to host it through StatusNotifierItem or XEmbed, which Qt
+chooses between, but that is an expectation, not a measurement.
 
 ## Status
 

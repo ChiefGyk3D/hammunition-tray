@@ -63,3 +63,31 @@ class Workflow(unittest.TestCase):
 
     def test_apt_in_the_container_is_non_interactive(self):
         self.assertIn("-e DEBIAN_FRONTEND=noninteractive", self.text)
+
+
+class QtInTheWorkflows(unittest.TestCase):
+    """The second package is built, checked and installed like the first."""
+
+    release = (ROOT / ".github/workflows/release.yml").read_text()
+    ci = (ROOT / ".github/workflows/ci.yml").read_text()
+
+    def test_ci_runs_the_smoke_test_with_pyqt6_required_not_skipped(self):
+        self.assertIn("python3-pyqt6", self.ci)
+        self.assertIn('HAMMUNITION_REQUIRE_PYQT6: "1"', self.ci)
+
+    def test_the_release_installs_runs_and_purges_the_qt_package_on_parrot(self):
+        build = self.release[self.release.index("\n  build:"):self.release.index("\n  release:")]
+        self.assertIn("apt-get install -y -qq /dist/hammunition-tray-qt_*_all.deb", build)
+        self.assertIn("NotShowIn=KDE;", build)
+        self.assertIn("QT_QPA_PLATFORM=offscreen", build)
+        self.assertIn("apt-get purge -y -qq hammunition-tray-qt", build)
+        self.assertIn("test ! -e /usr/share/hammunition-tray-qt", build)
+
+    def test_shellcheck_covers_the_package_build(self):
+        self.assertIn("shellcheck install.sh uninstall.sh packaging/debian/build.sh", self.ci)
+
+    def test_both_packages_are_checksummed(self):
+        build = self.release[self.release.index("\n  build:"):self.release.index("\n  release:")]
+        checks = build[build.index("name: checksums"):]
+        self.assertIn("hammunition-tray_", checks)
+        self.assertIn("hammunition-tray-qt_", checks)

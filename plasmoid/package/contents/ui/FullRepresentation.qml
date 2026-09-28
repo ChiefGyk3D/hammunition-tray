@@ -132,6 +132,14 @@ PlasmaExtras.Representation {
 
         PlasmaComponents.Label {
             Layout.fillWidth: true
+            visible: root.actionError !== ""
+            wrapMode: Text.WordWrap
+            color: Kirigami.Theme.negativeTextColor
+            text: root.actionError
+        }
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
             visible: !root.helperMissing
             wrapMode: Text.WordWrap
             opacity: 0.7

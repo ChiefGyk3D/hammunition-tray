@@ -34,7 +34,13 @@ PlasmoidItem {
     // cannot work is worse than an explanation.
     property bool helperMissing: false
 
+    // The poll's error, replaced by every poll.
     property string lastError: ""
+    // The last park or wake's error, kept apart because every action is
+    // followed at once by a poll: when one lastError served both, that poll
+    // cleared the action's error as it appeared. Cleared when the next
+    // action starts, never by a poll.
+    property string actionError: ""
     property bool acting: false
 
     // True once the login notice has been sent for this load of the applet.
@@ -94,7 +100,8 @@ PlasmoidItem {
         if (acting) return;
         acting = true;
         lastError = "";
-        exec.run("pkexec " + helper + " " + (park ? "park " : "wake ") + target(device));
+        actionError = "";
+        exec.run("/usr/bin/pkexec " + helper + " " + (park ? "park " : "wake ") + target(device));
     }
 
     // An unplugged kept device has nothing to wake, but the same "wake"
@@ -104,7 +111,8 @@ PlasmoidItem {
         if (acting) return;
         acting = true;
         lastError = "";
-        exec.run("pkexec " + helper + " wake " + target(device));
+        actionError = "";
+        exec.run("/usr/bin/pkexec " + helper + " wake " + target(device));
     }
 
     Plasma5Support.DataSource {
@@ -157,10 +165,14 @@ PlasmoidItem {
         // dismissed and 127 when authorisation is refused; neither is an
         // error worth showing, because nothing was written either way. The
         // switch has already snapped back to the real state, so the operator
-        // can see nothing happened.
+        // can see nothing happened. The one 127 that is said: no polkit
+        // agent at all, where every click would otherwise do nothing and say
+        // nothing (the Qt tray's rule, here for parity).
         acting = false;
-        if (code !== 0 && code !== 126 && code !== 127) {
-            lastError = stderr !== "" ? stderr : i18n("Action failed (exit %1)", code);
+        if (code === 127 && stderr.toLowerCase().indexOf("no authentication agent") !== -1) {
+            actionError = i18n("No polkit authentication agent is running, so no password prompt could appear. Install one (polkit-kde-agent-1) and log in again.");
+        } else if (code !== 0 && code !== 126 && code !== 127) {
+            actionError = stderr !== "" ? stderr : i18n("Action failed (exit %1)", code);
         }
         refresh();
     }

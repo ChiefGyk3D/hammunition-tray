@@ -1,6 +1,6 @@
 # CI for the Hammunition Devices applet.
 #
-# Two jobs, both of which can actually fail. There is deliberately no
+# Three jobs, each of which can actually fail. There is deliberately no
 # qmllint job: the qmllint on the development machine is a Qt5 shim that
 # cannot exec and *exits 0 while failing*, so a job running it would pass
 # forever without checking anything. A check nobody can trust is worse than
@@ -34,6 +34,23 @@ jobs:
       - name: Static checks on the package
         run: python -m unittest discover -s tests -v
 
+  # The Qt tray against the archive's own PyQt6 and the system python3,
+  # which is what the .deb depends on. HAMMUNITION_REQUIRE_PYQT6 turns the
+  # smoke test's skip into a failure here, so a broken import cannot pass
+  # as "skipped" in the one job that exists to run it.
+  qt:
+    name: Qt tray (system python3, archive PyQt6)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PyQt6 and desktop-file-utils from the archive
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-pyqt6 desktop-file-utils
+      - name: Every test, PyQt6 required
+        env:
+          HAMMUNITION_REQUIRE_PYQT6: "1"
+          QT_QPA_PLATFORM: offscreen
+        run: /usr/bin/python3 -m unittest discover -s tests -v
+
   shell:
     name: shellcheck
     runs-on: ubuntu-latest
@@ -41,5 +58,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install shellcheck
         run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-      - name: Lint the installers
-        run: shellcheck install.sh uninstall.sh
+      - name: Lint the installers and the package build
+        run: shellcheck install.sh uninstall.sh packaging/debian/build.sh

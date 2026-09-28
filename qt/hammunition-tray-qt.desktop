@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hammunition Devices
+GenericName=Radio device switches
+Comment=Park and wake radio devices Hammunition has catalogued, from the system tray
+Exec=hammunition-tray-qt
+TryExec=hammunition-tray-qt
+Icon=hammunition-tray-qt-awake
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=radio;usb;gps;gnss;modem;power;park;
