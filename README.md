@@ -138,24 +138,28 @@ per login, a dismissed or refused password prompt changes nothing and says
 nothing, and a missing helper is a sentence naming the command that
 installs it.
 
-**Where it differs from the applet, on purpose:**
+**Two rules the tray brought, which the applet now follows too:**
 
-- **No polkit agent.** Plasma always runs a polkit authentication agent,
-  so the applet can treat every pkexec exit 127 as "refused" and stay
-  silent. A minimal Xfce or LXQt session may run none, and then every click
-  would do nothing and say nothing. When pkexec reports *No authentication
-  agent found*, the tray says so in one line and names the desktop's usual
-  agent package: `lxqt-policykit` on LXQt, `policykit-1-gnome` (Ubuntu) or
+- **No polkit agent is said, not swallowed.** A dismissed or refused
+  password prompt stays silent, since nothing was written. But when pkexec
+  reports *No authentication agent found*, every click would otherwise do
+  nothing and say nothing, so both say so in one line and name an agent
+  package. Plasma normally runs its own agent (`polkit-kde-agent-1`); a
+  minimal Xfce or LXQt session may run none. The tray names the desktop's
+  usual one: `lxqt-policykit` on LXQt, `policykit-1-gnome` (Ubuntu) or
   `mate-polkit` on Xfce, `lxpolkit` on LXDE, `mate-polkit` on MATE. Those
   are the ones `apt-cache policy` found on Debian 13 or Ubuntu 24.04 on
   2026-09-28; `xfce-polkit` is in neither. Install one and log in again.
-  It grants nothing — it only says why nothing happened — and the package
-  does not pull an agent in.
+  It grants nothing — it only says why nothing happened — and neither
+  package pulls an agent in.
 - **An action's error stays until the next action.** Every park or wake is
-  followed at once by a re-read of the device state; the applet clears its
-  one error line on that re-read, so an action's error disappears almost
-  as it appears. The tray keeps the two apart.
-- **pkexec is run as `/usr/bin/pkexec`**, never looked up through `PATH`.
+  followed at once by a re-read of the device state. Both used to share
+  one error line, which that re-read cleared, so a failed park or wake
+  showed its error for a moment at most. The two are kept apart now.
+
+**One difference left, on purpose:** the tray runs `/usr/bin/pkexec` by
+its absolute path, never looked up through `PATH`; the applet still runs
+`pkexec` through its command line.
 
 **GNOME has no system tray** unless the AppIndicator extension is enabled
 (`gnome-shell-extension-appindicator` on Debian and Ubuntu). Without it the

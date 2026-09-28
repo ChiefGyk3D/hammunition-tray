@@ -9,8 +9,14 @@
   login everywhere except Plasma (`NotShowIn=KDE;`), and exits 0 with one
   line on stderr where there is no system tray. Depends on `python3 (>= 3.11)`,
   `python3-pyqt6` and `pkexec | policykit-1`.
-- The release builds, checksums, installs and removes both packages. The
-  Plasma package is unchanged apart from this README.
+- **The applet's park and wake errors are shown again.** Every action is
+  followed at once by a re-read of the device state, which cleared the one
+  error line the two shared, so a failed action's error vanished as it
+  appeared. An action's error now stays until the next action.
+- When pkexec finds no polkit authentication agent, the applet and the
+  tray say so in one line and name an agent package, instead of every click
+  silently doing nothing. Other dismissed or refused prompts stay silent.
+- The release builds, checksums, installs and removes both packages.
 
 ## [0.2.0] - 2026-09-28
 

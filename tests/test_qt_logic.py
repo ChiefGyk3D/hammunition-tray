@@ -257,7 +257,7 @@ class Action(unittest.TestCase):
     def test_an_action_error_survives_the_repoll_that_follows_it(self):
         # Every action is followed at once by a poll. If a good poll cleared
         # the action's error, it would vanish before anybody could read it --
-        # which is what main.qml does with its single lastError.
+        # which is what main.qml did with one lastError, until actionError.
         s = logic.apply_action(TrayState(acting=True), ok(code=2, stderr="error: ambiguous"))
         s, _ = logic.apply_poll(s, ok(json.dumps([dev()])))
         self.assertEqual(s.action_error, "error: ambiguous")
@@ -277,9 +277,9 @@ class Action(unittest.TestCase):
     NO_AGENT = "Error executing command as another user: No authentication agent found.\n"
 
     def test_no_polkit_agent_is_said_once_with_the_desktops_agent(self):
-        # A deliberate departure from the applet: Plasma always runs an
-        # agent, the desktops this tray is for may not, and without one
-        # every click would do nothing and say nothing.
+        # Plasma normally runs an agent, the desktops this tray is for may
+        # not, and without one every click would do nothing and say nothing.
+        # main.qml says the same, naming polkit-kde-agent-1.
         for desktop, package in (
             ("LXQt", "lxqt-policykit"),
             ("XFCE", "policykit-1-gnome"),

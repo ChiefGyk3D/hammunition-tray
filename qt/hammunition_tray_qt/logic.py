@@ -84,9 +84,10 @@ class TrayState:
     # The poll's own error, replaced by every poll.
     last_error: str = ""
     # The last park or wake's error. Kept apart because every action is
-    # followed at once by a poll, and a good poll clears last_error: in
-    # main.qml, which has one lastError, an action's error vanishes within
-    # a moment of appearing. Cleared when the next action starts.
+    # followed at once by a poll, and a good poll clears last_error: when
+    # one field served both (main.qml's lastError did, until its
+    # actionError), an action's error vanished as it appeared. Cleared when
+    # the next action starts. main.qml's actionError is the same rule.
     action_error: str = ""
     acting: bool = False
     kept_notice_sent: bool = False
@@ -218,12 +219,12 @@ def apply_action(state: TrayState, result: ProcResult, desktop: str = "") -> Tra
     and 127 when authorisation is refused; nothing was written in either
     case, so neither is an error.
 
-    One deliberate departure from the applet: 127 whose stderr says no
-    authentication agent was found is reported, naming the desktop's usual
-    agent. Plasma always runs an agent, so the applet never meets this; a
-    minimal Xfce or LXQt session may not, and there every click would do
-    nothing and say nothing. It grants no privilege, it only says why
-    nothing happened.
+    One 127 is reported: stderr saying no authentication agent was found,
+    naming the desktop's usual agent. Plasma normally runs one, which is why
+    the applet first treated every 127 as silent; a minimal Xfce or LXQt
+    session may not, and there every click would do nothing and say
+    nothing. It grants no privilege, it only says why nothing happened.
+    main.qml now follows the same rule.
 
     Two smaller differences, both a consequence of running without a
     shell: a pkexec that cannot be started is an error here (the applet's
