@@ -3,6 +3,7 @@ what it declares it needs, and that it never starts a second tray in Plasma."""
 
 import configparser
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -137,7 +138,12 @@ class QtDebianPackage(unittest.TestCase):
         self.assertEqual(entry["Icon"], "hammunition-tray-qt-awake")
         self.assertNotIn("NotShowIn", entry)
 
-    @unittest.skipUnless(shutil.which("desktop-file-validate"), "desktop-file-validate not installed")
+    # The CI job that installs desktop-file-utils also sets
+    # HAMMUNITION_REQUIRE_PYQT6; there a missing validator fails, not skips.
+    @unittest.skipUnless(
+        shutil.which("desktop-file-validate") or os.environ.get("HAMMUNITION_REQUIRE_PYQT6") == "1",
+        "desktop-file-validate not installed",
+    )
     def test_desktop_files_validate(self):
         for rel in ("usr/share/applications/hammunition-tray-qt.desktop", AUTOSTART):
             p = subprocess.run(
