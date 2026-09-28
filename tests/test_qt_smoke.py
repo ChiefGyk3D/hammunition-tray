@@ -181,6 +181,28 @@ class Smoke(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertFalse(results[0].started)
 
+    def test_the_real_runner_kills_a_poll_that_outlives_its_timeout(self):
+        import time
+
+        from PyQt6.QtCore import QEventLoop, QTimer
+
+        from hammunition_tray_qt.tray import QtRunner
+
+        results = []
+        loop = QEventLoop()
+
+        def done(r):
+            results.append(r)
+            loop.quit()
+
+        started = time.monotonic()
+        QtRunner().run(sys.executable, ["-c", "import time; time.sleep(10)"], done, timeout_ms=200)
+        QTimer.singleShot(8000, loop.quit)
+        loop.exec()
+        self.assertLess(time.monotonic() - started, 8)
+        [r] = results
+        self.assertTrue(r.crashed)
+
     def test_the_real_runner_captures_code_and_output_without_a_shell(self):
         from PyQt6.QtCore import QEventLoop, QTimer
 

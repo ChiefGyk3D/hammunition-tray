@@ -347,6 +347,13 @@ class IconAndTooltip(unittest.TestCase):
             logic.icon_name(polled(dev(parked=None, kept=True, attached=False))), logic.ICON_AWAKE
         )
 
+    def test_an_unplugged_device_never_counts_as_parked(self):
+        # A row claiming parked but not attached (the helper prints parked
+        # null for these today) is not parked on this machine now.
+        state = polled(dev(parked=True, kept=True, attached=False))
+        self.assertEqual(logic.icon_name(state), logic.ICON_AWAKE)
+        self.assertEqual(logic.tooltip(state), "Hammunition Devices\n0 devices parked")
+
     def test_the_icon_names_are_distinct_from_the_applets(self):
         self.assertNotEqual(logic.ICON_AWAKE, "hammunition-devices")
         self.assertNotEqual(logic.ICON_PARKED, "hammunition-devices")
