@@ -109,7 +109,7 @@ class Smoke(unittest.TestCase):
         tray, runner = self.make([row()])
         tray.refresh()
         self.action(tray, "u-blox GNSS receiver (1-4)").trigger()
-        self.assertEqual(runner.calls[1], ("pkexec", [HELPER, "park", "gnss-ublox@1-4"]))
+        self.assertEqual(runner.calls[1], ("/usr/bin/pkexec", [HELPER, "park", "gnss-ublox@1-4"]))
         self.assertEqual(runner.calls[2], (HELPER, ["state"]))
 
     def test_a_dismissed_prompt_leaves_the_item_showing_the_truth(self):
@@ -126,13 +126,13 @@ class Smoke(unittest.TestCase):
         tray, runner = self.make([row(summary="", parked=None, kept=True, attached=False)])
         tray.refresh()
         self.action(tray, "Forget gnss-ublox").trigger()
-        self.assertEqual(runner.calls[1], ("pkexec", [HELPER, "wake", "gnss-ublox@1-4"]))
+        self.assertEqual(runner.calls[1], ("/usr/bin/pkexec", [HELPER, "wake", "gnss-ublox@1-4"]))
 
     def test_a_name_that_is_not_a_catalog_name_never_reaches_pkexec(self):
         tray, runner = self.make([row(name="x; reboot")])
         tray.refresh()
         self.action(tray, "u-blox GNSS receiver").trigger()
-        self.assertEqual([c for c in runner.calls if c[0] == "pkexec"], [])
+        self.assertEqual([c for c in runner.calls if c[0] != HELPER], [])
         self.assertTrue(any("refusing device name" in t for t in self.texts(tray)))
 
     def test_an_ampersand_in_a_summary_is_not_a_mnemonic(self):

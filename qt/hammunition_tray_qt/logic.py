@@ -21,7 +21,10 @@ from dataclasses import dataclass, replace
 # discovered: a path we went looking for would be a second value crossing
 # the privilege boundary.
 HELPER = "/usr/local/libexec/hammunition-devctl"
-PKEXEC = "pkexec"
+# By absolute path, like the helper: a pkexec found through PATH (say
+# ~/.local/bin/pkexec) could fake the password dialog. Debian 13 and
+# Ubuntu 24.04 both install it here.
+PKEXEC = "/usr/bin/pkexec"
 POLL_MS = 5000
 
 ICON_AWAKE = "hammunition-tray-qt-awake"

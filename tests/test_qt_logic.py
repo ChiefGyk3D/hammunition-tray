@@ -146,9 +146,14 @@ class Target(unittest.TestCase):
 
     def test_the_argv_is_exactly_helper_verb_target(self):
         program, args = logic.action_argv("park", self.device())
-        self.assertEqual(program, "pkexec")
+        self.assertEqual(program, "/usr/bin/pkexec")
         self.assertEqual(args, ["/usr/local/libexec/hammunition-devctl", "park", "gnss-ublox@1-4"])
         self.assertEqual(logic.action_argv("wake", self.device())[1][1], "wake")
+
+    def test_pkexec_is_never_found_through_path(self):
+        # A ~/.local/bin/pkexec earlier in PATH could fake the password
+        # dialog. Debian 13 and Ubuntu 24.04 both install it here.
+        self.assertEqual(logic.PKEXEC, "/usr/bin/pkexec")
 
     def test_no_other_verb(self):
         for verb in ("state", "apply", "park ", ""):
