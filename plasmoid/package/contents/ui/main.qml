@@ -59,8 +59,10 @@ PlasmoidItem {
         title: i18n("Kept off")
     }
 
-    // Sent once, the first time devices come back carrying a kept-but-off
-    // device -- across reboots, not across every poll tick.
+    // Checked once, on the first poll after the applet loads (i.e. after
+    // login) -- not on every poll tick. A device kept later in the session
+    // was just switched off by the operator, who was already watching it
+    // happen, so it is not announced.
     function noticeKept() {
         if (!keptNoticeSent && devices) {
             keptNoticeSent = true;
