@@ -151,6 +151,15 @@ class QtDebianPackage(unittest.TestCase):
         self.assertTrue(text.startswith("#!/usr/bin/python3 -I\n"), text.splitlines()[0])
         self.assertIn('"/usr/share/hammunition-tray-qt"', text)
 
+    def test_the_launcher_writes_no_bytecode_into_the_package(self):
+        # Measured in the Parrot container: run once as root, it left a
+        # __pycache__ in /usr/share/hammunition-tray-qt that dpkg does not
+        # own, so `apt remove` left the directory behind.
+        text = (self.tree / LAUNCHER).read_text()
+        self.assertLess(
+            text.index("sys.dont_write_bytecode = True"), text.index("from hammunition_tray_qt")
+        )
+
     def test_no_maintainer_scripts(self):
         members = self.control_members()
         for script in ("preinst", "postinst", "prerm", "postrm"):

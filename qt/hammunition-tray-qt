@@ -6,9 +6,12 @@
 # The package installs the module under /usr/share, outside dist-packages,
 # because it is an application rather than a library. -I keeps PYTHONPATH
 # and the user's site-packages out of the import path, so the only
-# hammunition_tray_qt this can load is the one the package put there.
+# hammunition_tray_qt this can load is the one the package put there. No
+# bytecode is written: run once as root it would leave a __pycache__ that
+# dpkg does not own, and `apt remove` would leave the directory behind.
 import sys
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, "/usr/share/hammunition-tray-qt")
 
 from hammunition_tray_qt.tray import main  # noqa: E402
