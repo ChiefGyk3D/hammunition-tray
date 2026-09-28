@@ -1,0 +1,103 @@
+# Cut a release when a v* tag is pushed. The first job refuses a tag that
+# disagrees with the tree; the second builds the .deb and installs it on
+# Parrot before anything is published; the third publishes it with
+# SHA256SUMS. Actions are pinned by commit (resolved with git ls-remote on
+# 2026-09-27), and the tag reaches shell only through env, never through
+# ${{ }} inside run: a tag is an attacker-shaped string in general.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  # A dry run: verify and build, install on Parrot, publish nothing. The only
+  # other way to exercise this file is to push a real tag and delete it if
+  # the first run fails.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: the tag agrees with the tree
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: the tag, metadata.json and the changelog agree
+        env:
+          TAG: ${{ github.ref_name }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          case "$REF" in
+            refs/tags/v*) python3 scripts/check_version.py "$TAG" ;;
+            # A dry run has no tag; check the changelog against the tree's own version.
+            *) python3 scripts/check_version.py "v$(python3 -c 'import json; print(json.load(open("plasmoid/package/metadata.json"))["KPlugin"]["Version"])')" ;;
+          esac
+
+  build:
+    name: build, and install on Parrot
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests -v
+      - run: ./packaging/debian/build.sh dist
+      - name: installs on Parrot, files in place, removes cleanly
+        run: |
+          set -euo pipefail
+          docker run --rm -e DEBIAN_FRONTEND=noninteractive -v "$PWD/dist:/dist:ro" docker.io/parrotsec/core:latest bash -c '
+            set -eux
+            apt-get update -qq
+            apt-get install -y -qq /dist/hammunition-tray_*_all.deb
+            d=/usr/share/plasma/plasmoids/com.chiefgyk3d.hammunition.devices
+            test -f "$d/metadata.json"
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$d/metadata.json"
+            test -f /usr/share/icons/hicolor/scalable/apps/hammunition-devices.svg
+            apt-get remove -y -qq hammunition-tray
+            test ! -e "$d"
+          '
+      - name: checksums
+        run: cd dist && sha256sum ./* > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      # Checked out only for CHANGELOG.md, the release notes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: dist
+          path: dist
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The changelog section for this version, up to the next heading.
+          awk -v v="${TAG#v}" 'index($0, "## [" v "]") == 1 {f=1; next} /^## \[/ {f=0} f' \
+            CHANGELOG.md > notes.md
+          test -s notes.md
+          gh release create "$TAG" dist/* --repo "$REPO" \
+            --title "hammunition-tray $TAG" --notes-file notes.md

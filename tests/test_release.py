@@ -1,0 +1,65 @@
+"""The release job's version gate, runnable locally."""
+
+import json
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from check_version import check  # noqa: E402
+
+
+class VersionGate(unittest.TestCase):
+    def tree(self, version="0.1.0", changelog="## [0.1.0] - 2026-09-27\n"):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d)
+        meta = d / "plasmoid" / "package"
+        meta.mkdir(parents=True)
+        (meta / "metadata.json").write_text(json.dumps({"KPlugin": {"Version": version}}))
+        (d / "CHANGELOG.md").write_text("# Changelog\n\n" + changelog)
+        return d
+
+    def test_agreeing_tag_passes(self):
+        self.assertEqual(check("v0.1.0", self.tree()), "0.1.0")
+
+    def test_tag_that_disagrees_with_metadata_fails(self):
+        with self.assertRaisesRegex(ValueError, "metadata.json says 0.1.0"):
+            check("v0.2.0", self.tree())
+
+    def test_missing_changelog_section_fails(self):
+        with self.assertRaisesRegex(ValueError, "CHANGELOG.md has no"):
+            check("v0.1.0", self.tree(changelog="## [0.0.9]\n"))
+
+    def test_tag_without_v_fails(self):
+        with self.assertRaises(ValueError):
+            check("0.1.0", self.tree())
+
+    def test_the_repository_itself_agrees_with_its_own_version(self):
+        meta = json.loads((ROOT / "plasmoid/package/metadata.json").read_text())
+        version = meta["KPlugin"]["Version"]
+        self.assertEqual(check("v" + version, ROOT), version)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class Workflow(unittest.TestCase):
+    """The release workflow's shape. It only runs for real on a pushed tag,
+    so the parts that matter are pinned here where they can go red locally."""
+
+    text = (ROOT / ".github/workflows/release.yml").read_text()
+
+    def test_a_manual_dry_run_exists(self):
+        self.assertIn("workflow_dispatch:", self.text)
+
+    def test_publishing_only_happens_for_a_tag(self):
+        release = self.text[self.text.index("\n  release:"):]
+        self.assertIn("if: startsWith(github.ref, 'refs/tags/v')", release)
+
+    def test_apt_in_the_container_is_non_interactive(self):
+        self.assertIn("-e DEBIAN_FRONTEND=noninteractive", self.text)
