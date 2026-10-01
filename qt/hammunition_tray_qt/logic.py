@@ -16,6 +16,9 @@ import json
 import re
 from dataclasses import dataclass, replace
 
+from . import timelogic
+from .timelogic import TimeState
+
 # The wrapper `hammunition hardware apply` installs. The polkit action
 # authorises this exact path, so it is a constant rather than something
 # discovered: a path we went looking for would be a second value crossing
@@ -91,16 +94,25 @@ class TrayState:
     action_error: str = ""
     acting: bool = False
     kept_notice_sent: bool = False
+    # The Time section (Hammunition D-058): the helper's `time state`, or
+    # None until it answers. `time_unsupported` is an engine older than
+    # 0.18.0; `time_error` is the time poll's own error, kept apart from
+    # the device poll's so neither poll clears the other's.
+    time_state: TimeState | None = None
+    time_unsupported: bool = False
+    time_error: str = ""
 
 
 @dataclass(frozen=True)
 class MenuEntry:
-    kind: str  # info | toggle | forget | error | footer | separator | quit
+    kind: str  # info | toggle | forget | heading | time | note | mode | error | footer | separator | quit
     text: str = ""
     enabled: bool = False
     checked: bool | None = None
     verb: str | None = None
     device: Device | None = None
+    # For kind "mode": the engine's name for the mode this item sets.
+    mode: str | None = None
 
 
 def parse_state(stdout: str) -> tuple[Device, ...]:
@@ -151,6 +163,27 @@ def action_argv(verb: str, device: Device) -> tuple[str, list[str]]:
 def poll_argv() -> tuple[str, list[str]]:
     # No pkexec: reading sysfs needs no privilege, only writing does.
     return HELPER, ["state"]
+
+
+def time_poll_argv() -> tuple[str, list[str]]:
+    return timelogic.time_poll_argv(HELPER)
+
+
+def time_mode_argv(mode: str) -> tuple[str, list[str]]:
+    """pkexec, the helper, ``time mode`` and one of the engine's four modes;
+    any other string is refused before it reaches pkexec."""
+    return timelogic.time_mode_argv(PKEXEC, HELPER, mode)
+
+
+def apply_time_poll(state: TrayState, result: ProcResult) -> TrayState:
+    out = timelogic.poll_outcome(
+        result.started, result.crashed, result.code, result.stdout, result.stderr
+    )
+    if out.keep:
+        return replace(state, time_error=out.error)
+    return replace(
+        state, time_state=out.state, time_unsupported=out.unsupported, time_error=out.error
+    )
 
 
 def _attached_parked(state: TrayState) -> int:
@@ -260,7 +293,8 @@ def tooltip(state: TrayState) -> str:
     else:
         n = _attached_parked(state)
         sub = f"{n} device parked" if n == 1 else f"{n} devices parked"
-    return f"{TITLE}\n{sub}"
+    rtc = "" if state.helper_missing else timelogic.rtc_note(state.time_state)
+    return f"{TITLE}\n{sub}" + (f"\n{rtc}" if rtc else "")
 
 
 def _device_entry(d: Device, acting: bool) -> MenuEntry:
@@ -292,6 +326,35 @@ def _device_entry(d: Device, acting: bool) -> MenuEntry:
     )
 
 
+def _time_entries(state: TrayState) -> list[MenuEntry]:
+    """The Time section: a heading, what the clock follows, any notes, and
+    the engine's four modes. The menu has no opacity to grey with, so where
+    the applet greys the section the reason is the note under it, and the
+    modes are disabled only where `time mode` would refuse them."""
+    t = state.time_state
+    entries = [
+        MenuEntry("separator"),
+        MenuEntry("heading", "Time"),
+        MenuEntry("time", timelogic.headline(t, state.time_unsupported)),
+    ]
+    entries += [MenuEntry("note", n) for n in timelogic.notes(t)]
+    if state.time_unsupported or t is None:
+        return entries
+    choosable = timelogic.can_choose(t, state.time_unsupported) and not state.acting
+    for mode in timelogic.MODES:
+        entries.append(
+            MenuEntry(
+                kind="mode",
+                text=timelogic.mode_label(mode),
+                enabled=choosable,
+                checked=t.mode == mode,
+                verb="time-mode",
+                mode=mode,
+            )
+        )
+    return entries
+
+
 def menu_model(state: TrayState) -> list[MenuEntry]:
     entries: list[MenuEntry] = []
     if state.helper_missing:
@@ -316,10 +379,15 @@ def menu_model(state: TrayState) -> list[MenuEntry]:
         ]
     else:
         entries += [_device_entry(d, state.acting) for d in state.devices]
-    for error in (state.last_error, state.action_error):
-        if error:
-            entries.append(MenuEntry("error", error))
+    if state.last_error:
+        entries.append(MenuEntry("error", state.last_error))
     if not state.helper_missing:
         entries += [MenuEntry("separator"), MenuEntry("footer", FOOTER)]
+        # After the footer, which is about the devices above it.
+        entries += _time_entries(state)
+    # The action's error last: it may be a park, a wake or a time mode.
+    for error in (state.time_error, state.action_error):
+        if error:
+            entries.append(MenuEntry("error", error))
     entries += [MenuEntry("separator"), MenuEntry("quit", "Quit", enabled=True)]
     return entries
