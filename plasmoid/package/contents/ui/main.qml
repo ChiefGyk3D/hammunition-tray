@@ -14,6 +14,7 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.notification
+import "timelogic.js" as TimeLogic
 
 PlasmoidItem {
     id: root
@@ -42,6 +43,37 @@ PlasmoidItem {
     // action starts, never by a poll.
     property string actionError: ""
     property bool acting: false
+
+    // Parsed `devctl time state`: one object, or null until the first poll
+    // (Hammunition D-058). Read without pkexec, like the device list. The
+    // rules and every sentence are in timelogic.js, shared word for word
+    // with the Qt tray's timelogic.py.
+    property var timeState: null
+
+    // True when the installed engine predates the Time section: its helper
+    // answers `time state` with a usage error, exit 2. Said once, as the
+    // section's one line, never as an error on every poll.
+    property bool timeUnsupported: false
+
+    // The time poll's own error, kept apart from the device poll's so that
+    // neither poll clears the other's.
+    property string timeError: ""
+
+    // The engine's modes, in its order. setTimeMode() refuses anything else,
+    // so no other string can reach the privileged helper from here.
+    readonly property var timeModes: ["auto", "prefer-gps", "ntp-only", "gps-only"]
+
+    readonly property bool timeGreyed: TimeLogic.greyed(timeState)
+    readonly property bool timeChoosable: TimeLogic.canChoose(timeState, timeUnsupported)
+
+    // i18n, handed to timelogic.js, which as a library script has no QML
+    // context of its own. Spelled out by argument count rather than spread,
+    // so no undefined ever reaches i18n as an argument.
+    function tr(message, a1, a2) {
+        if (a2 !== undefined) return i18n(message, a1, a2);
+        if (a1 !== undefined) return i18n(message, a1);
+        return i18n(message);
+    }
 
     // True once the login notice has been sent for this load of the applet.
     // A poll runs every few seconds; without this guard the same kept
@@ -82,10 +114,12 @@ PlasmoidItem {
         }
     }
 
-    // `state` needs no privilege -- reading sysfs does not, only writing does
-    // -- so the poll runs the helper directly and no prompt appears for it.
+    // Neither read needs privilege -- reading sysfs and asking ntpq do not,
+    // only writing does -- so the poll runs the helper directly and no prompt
+    // appears for either.
     function refresh() {
         exec.run(helper + " state");
+        exec.run(helper + " time state");
     }
 
     // NAME@ADDRESS, always. Two receivers of one class share a catalog name
@@ -115,6 +149,17 @@ PlasmoidItem {
         exec.run("/usr/bin/pkexec " + helper + " wake " + target(device));
     }
 
+    // The time mode, through the same polkit action as park and wake. Only
+    // one of the engine's four names gets as far as the command line.
+    function setTimeMode(mode) {
+        if (acting || timeModes.indexOf(mode) === -1) return;
+        if (timeState && timeState.mode === mode) return;
+        acting = true;
+        lastError = "";
+        actionError = "";
+        exec.run("/usr/bin/pkexec " + helper + " time mode " + mode);
+    }
+
     Plasma5Support.DataSource {
         id: exec
         engine: "executable"
@@ -134,8 +179,21 @@ PlasmoidItem {
         const stdout = (data["stdout"] || "").trim();
         const stderr = (data["stderr"] || "").trim();
         const code = data["exit code"];
+        // " time state" is tested before " state", which it contains;
+        // sourceKind() has the order and the parity test pins it.
+        const kind = TimeLogic.sourceKind(source);
 
-        if (source.indexOf(" state") !== -1 && source.indexOf("pkexec") === -1) {
+        if (kind === "time") {
+            const out = TimeLogic.pollOutcome(code, stdout, stderr, root.tr);
+            timeError = out.error;
+            if (!out.keep) {
+                timeState = out.state;
+                timeUnsupported = out.unsupported;
+            }
+            return;
+        }
+
+        if (kind === "devices") {
             // 127 from a direct (non-pkexec) run is the shell saying the
             // binary is not there. Unambiguous here precisely because the
             // poll does not go through pkexec, which overloads 127.
@@ -161,7 +219,10 @@ PlasmoidItem {
             return;
         }
 
-        // A park or wake finished. pkexec exits 126 when the prompt is
+        // A park, a wake or a time mode finished. The time mode's exit 1 is
+        // "written, but not verified", and its stderr says what; 2 is a
+        // refusal naming why. Both are shown like any other failure.
+        // pkexec exits 126 when the prompt is
         // dismissed and 127 when authorisation is refused; neither is an
         // error worth showing, because nothing was written either way. The
         // switch has already snapped back to the real state, so the operator
@@ -192,9 +253,12 @@ PlasmoidItem {
     toolTipMainText: i18n("Hammunition Devices")
     toolTipSubText: {
         if (helperMissing) return i18n("Hammunition's device helper is not installed");
-        if (!devices) return i18n("Reading device state…");
-        if (devices.length === 0) return i18n("No parkable device is attached");
-        return i18np("%1 device parked", "%1 devices parked", parkedCount);
+        let text;
+        if (!devices) text = i18n("Reading device state…");
+        else if (devices.length === 0) text = i18n("No parkable device is attached");
+        else text = i18np("%1 device parked", "%1 devices parked", parkedCount);
+        const rtc = TimeLogic.rtcNote(timeState, root.tr);
+        return rtc !== "" ? text + "\n" + rtc : text;
     }
 
     compactRepresentation: CompactRepresentation {}

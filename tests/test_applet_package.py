@@ -254,13 +254,13 @@ class ActionErrors(unittest.TestCase):
 
     def poll_branch(self):
         main = read(os.path.join(UI, "main.qml"))
-        start = main.index('if (source.indexOf(" state") !== -1')
-        end = main.index("// A park or wake finished", start)
+        start = main.index('if (kind === "devices")')
+        end = main.index("// A park, a wake or a time mode finished", start)
         return main[start:end]
 
     def action_branch(self):
         main = read(os.path.join(UI, "main.qml"))
-        start = main.index("// A park or wake finished")
+        start = main.index("// A park, a wake or a time mode finished")
         return main[start:main.index("\n    }", start)]
 
     def test_the_poll_never_touches_the_action_error(self):
@@ -286,3 +286,87 @@ class ActionErrors(unittest.TestCase):
         action = self.action_branch()
         self.assertIn("no authentication agent", action)
         self.assertIn("polkit-kde-agent-1", action)
+
+
+class Time(unittest.TestCase):
+    """The Time section (Hammunition D-058). The same two guarantees as the
+    switches: reading never prompts, changing always does. Its wording and
+    rules are timelogic.js, held to the Qt tray's by test_time_parity."""
+
+    MODES = ["auto", "prefer-gps", "ntp-only", "gps-only"]
+
+    def main(self):
+        return read(os.path.join(UI, "main.qml"))
+
+    def full(self):
+        return read(os.path.join(UI, "FullRepresentation.qml"))
+
+    def set_time_mode(self):
+        found = re.search(r"function setTimeMode\([^)]*\)\s*\{(.*?)\n    \}", self.main(), re.S)
+        self.assertIsNotNone(found, "setTimeMode() is gone or was renamed")
+        return found.group(1)
+
+    def test_the_time_poll_never_goes_through_pkexec(self):
+        refresh = re.search(r"function refresh\(\)\s*\{(.*?)\n    \}", self.main(), re.S)
+        self.assertIn('helper + " time state"', refresh.group(1))
+        self.assertNotIn("pkexec", refresh.group(1))
+
+    def test_a_mode_change_always_goes_through_pkexec_by_its_path(self):
+        self.assertIn('"/usr/bin/pkexec " + helper + " time mode " + mode', self.set_time_mode())
+
+    def test_only_the_engines_four_modes_can_reach_the_helper(self):
+        found = re.search(r"readonly property var timeModes: \[([^\]]*)\]", self.main())
+        self.assertIsNotNone(found)
+        self.assertEqual(re.findall(r'"([^"]+)"', found.group(1)), self.MODES)
+        body = self.set_time_mode()
+        # The guard comes before the command is built.
+        self.assertLess(body.index("timeModes.indexOf(mode) === -1"), body.index("exec.run"))
+
+    def test_a_mode_change_clears_the_last_action_error(self):
+        self.assertIn('actionError = "";', self.set_time_mode())
+
+    def test_the_time_poll_has_its_own_error(self):
+        main = self.main()
+        self.assertIn('property string timeError: ""', main)
+        branch = main[main.index('if (kind === "time")') : main.index('if (kind === "devices")')]
+        self.assertIn("timeError = out.error", branch)
+        self.assertNotIn("lastError", branch)
+        self.assertNotIn("actionError", branch)
+        self.assertIn("text: root.timeError", self.full())
+
+    def test_the_library_is_imported_where_it_is_used(self):
+        for text in (self.main(), self.full()):
+            self.assertIn('import "timelogic.js" as TimeLogic', text)
+        self.assertTrue(os.path.exists(os.path.join(UI, "timelogic.js")))
+
+    def test_the_library_is_a_pragma_library_with_a_licence_header(self):
+        js = read(os.path.join(UI, "timelogic.js"))
+        self.assertTrue(js.startswith(".pragma library\n"))
+        self.assertIn("SPDX-License-Identifier: GPL-3.0-or-later", js)
+        # A library script has no QML context: an i18n call in it would be
+        # a ReferenceError on the panel, so it only ever calls tr().
+        self.assertNotRegex(js, r"\bi18n\(")
+
+    def test_the_section_is_in_the_popup(self):
+        full = self.full()
+        self.assertIn('i18n("Time")', full)
+        self.assertIn("model: root.timeModes", full)
+        self.assertIn("root.setTimeMode(", full)
+        self.assertIn("TimeLogic.headline(root.timeState, root.timeUnsupported, root.tr)", full)
+        self.assertIn("TimeLogic.notes(root.timeState, root.tr)", full)
+
+    def test_greyed_and_disabled_follow_the_shared_rules(self):
+        main = self.main()
+        self.assertIn("TimeLogic.greyed(timeState)", main)
+        self.assertIn("TimeLogic.canChoose(timeState, timeUnsupported)", main)
+        full = self.full()
+        self.assertIn("opacity: root.timeGreyed ? 0.6 : 1.0", full)
+        self.assertIn("enabled: !root.acting && root.timeChoosable", full)
+
+    def test_a_dismissed_prompt_leaves_the_reported_mode_checked(self):
+        full = self.full()
+        self.assertIn("checked = Qt.binding(() => root.timeState !== null && root.timeState.mode === modelData)", full)
+
+    def test_no_rtc_is_in_the_tooltip(self):
+        tip = self.main()[self.main().index("toolTipSubText:"):]
+        self.assertIn("TimeLogic.rtcNote(timeState, root.tr)", tip)

@@ -8,12 +8,15 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.extras as PlasmaExtras
 import org.kde.kirigami as Kirigami
+import "timelogic.js" as TimeLogic
 
 PlasmaExtras.Representation {
     id: full
 
     Layout.minimumWidth: Kirigami.Units.gridUnit * 20
-    Layout.minimumHeight: Kirigami.Units.gridUnit * 12
+    // Taller since the Time section: a heading, a sentence, any notes and
+    // four modes under the device list.
+    Layout.minimumHeight: Kirigami.Units.gridUnit * 20
 
     header: PlasmaExtras.PlasmoidHeading {
         RowLayout {
@@ -149,6 +152,73 @@ PlasmaExtras.Representation {
             // off across reboots (Hammunition D-056), so the sentence no
             // longer claims a reboot always wakes everything.
             text: i18n("Off stays off across reboots until you turn it back on.")
+        }
+
+        // The Time section (Hammunition D-058): what the clock follows, and
+        // the engine's four time modes. Every sentence comes from
+        // timelogic.js, shared word for word with the Qt tray.
+        Kirigami.Separator {
+            Layout.fillWidth: true
+            visible: !root.helperMissing
+        }
+
+        PlasmaExtras.Heading {
+            Layout.fillWidth: true
+            visible: !root.helperMissing
+            level: 5
+            text: i18n("Time")
+        }
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            visible: !root.helperMissing
+            wrapMode: Text.WordWrap
+            // Greyed when the GPS cannot feed the clock: no ntpsec, or the
+            // receiver is parked while the mode would use it. The note
+            // below says which.
+            opacity: root.timeGreyed ? 0.6 : 1.0
+            text: TimeLogic.headline(root.timeState, root.timeUnsupported, root.tr)
+        }
+
+        Repeater {
+            model: root.helperMissing ? [] : TimeLogic.notes(root.timeState, root.tr)
+            delegate: PlasmaComponents.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                opacity: 0.7
+                font: Kirigami.Theme.smallFont
+                text: modelData
+            }
+        }
+
+        Repeater {
+            model: root.timeModes
+            delegate: PlasmaComponents.RadioButton {
+                Layout.fillWidth: true
+                visible: !root.helperMissing && !root.timeUnsupported && root.timeState !== null
+                // Disabled only where `time mode` would refuse: ntpsec is
+                // not the daemon. A parked receiver greys the sentence but
+                // the mode can still be changed, to ntp-only say.
+                enabled: !root.acting && root.timeChoosable
+                opacity: root.timeGreyed ? 0.6 : 1.0
+                text: TimeLogic.modeLabel(modelData, root.tr)
+                // Bound to the mode the helper reported and rebound on
+                // toggle, so a dismissed prompt leaves the truth checked.
+                checked: root.timeState !== null && root.timeState.mode === modelData
+                onToggled: {
+                    const wanted = modelData;
+                    checked = Qt.binding(() => root.timeState !== null && root.timeState.mode === modelData);
+                    root.setTimeMode(wanted);
+                }
+            }
+        }
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            visible: !root.helperMissing && root.timeError !== ""
+            wrapMode: Text.WordWrap
+            color: Kirigami.Theme.negativeTextColor
+            text: root.timeError
         }
     }
 }
