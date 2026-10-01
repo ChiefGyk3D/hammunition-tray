@@ -83,6 +83,11 @@ class QtInTheWorkflows(unittest.TestCase):
         self.assertIn("apt-get purge -y -qq hammunition-tray-qt", build)
         self.assertIn("test ! -e /usr/share/hammunition-tray-qt", build)
 
+    def test_ci_requires_node_for_the_time_parity_test_in_both_jobs(self):
+        # Without it test_time_parity skips, and the applet's timelogic.js
+        # would go untested on every pull request.
+        self.assertEqual(self.ci.count('HAMMUNITION_REQUIRE_NODE: "1"'), 2)
+
     def test_shellcheck_covers_the_package_build(self):
         self.assertIn("shellcheck install.sh uninstall.sh packaging/debian/build.sh", self.ci)
 
