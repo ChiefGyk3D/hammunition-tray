@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-01
+
+- A **Time** section in both the Plasma applet and the Qt tray, for
+  Hammunition's GPS time (D-058, Hammunition 0.18.0 or later): what the
+  clock follows now (the network, the GPS, or holdover since a time in UTC),
+  and the engine's four modes to choose from: automatic, prefer the GPS,
+  network only, GPS only. Reading polls `hammunition-devctl time state`
+  with no password; choosing a mode is one polkit prompt for
+  `pkexec hammunition-devctl time mode MODE`, and no string but those four
+  reaches it.
+- Greyed, with the reason, when the GPS cannot feed the clock: ntpsec is
+  not the time daemon (the modes are disabled then, since the engine would
+  refuse them), or the receiver is parked while the mode would use it.
+- An engine older than 0.18.0 is said once, as the section's one line
+  ("Update Hammunition to 0.18.0 or later…"), never as an error on every
+  poll; the poll keeps asking, so updating the engine brings the section in
+  without logging out.
+- The tooltip notes a machine with no hardware clock (RTC).
+- Missing ntpd grants are noted without telling anyone to run
+  `hammunition hardware apply`: on a machine without gpsd, apply declines
+  them, so they stay missing however often it runs.
+- The two front ends' wording and rules are one module each,
+  `timelogic.js` and `timelogic.py`, and a test runs both over the same
+  helper outputs and fails on any difference. CI now requires node for it.
+
 ## [0.3.0] - 2026-09-28
 
 - **`hammunition-tray-qt`**, a second package from the same build: the

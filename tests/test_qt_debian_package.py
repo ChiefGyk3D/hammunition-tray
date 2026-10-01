@@ -80,6 +80,7 @@ class QtDebianPackage(unittest.TestCase):
             f"{LIB}/__init__.py",
             f"{LIB}/__main__.py",
             f"{LIB}/logic.py",
+            f"{LIB}/timelogic.py",
             f"{LIB}/tray.py",
             "usr/share/applications/hammunition-tray-qt.desktop",
             AUTOSTART,

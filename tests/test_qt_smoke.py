@@ -29,6 +29,19 @@ if PYQT6 and os.environ.get("HAMMUNITION_REQUIRE_PYQT6") == "1":
     raise RuntimeError(PYQT6)
 
 HELPER = "/usr/local/libexec/hammunition-devctl"
+PKEXEC = "/usr/bin/pkexec"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from time_fixtures import POLLS, STATES  # noqa: E402
+
+
+def _time_ok(row=None):
+    from hammunition_tray_qt.logic import ProcResult
+
+    return ProcResult(started=True, stdout=json.dumps(row or STATES["follows-gps"]))
+
+
+TIME_OK = _time_ok()
 
 
 def row(**kw):
@@ -55,8 +68,14 @@ class FakeRunner:
         from hammunition_tray_qt.logic import ProcResult
 
         self.calls.append((program, list(args)))
-        key = "state" if program == HELPER else args[1]
-        done(self.answers.get(key, ProcResult(started=True, stdout="[]")))
+        # "state" and "time state" for the polls; "park", "wake" and
+        # "time mode MODE" for what goes through pkexec.
+        if program == HELPER:
+            key = " ".join(args)
+        else:
+            key = args[1] if args[1] in ("park", "wake") else " ".join(args[1:])
+        default = TIME_OK if key == "time state" else ProcResult(started=True, stdout="[]")
+        done(self.answers.get(key, default))
 
 
 @unittest.skipIf(PYQT6, PYQT6 or "")
@@ -88,7 +107,7 @@ class Smoke(unittest.TestCase):
     def test_it_polls_and_builds_the_menu(self):
         tray, runner = self.make([row(), row(address="1-5", parked=True, kept=True)])
         tray.refresh()
-        self.assertEqual(runner.calls[0], (HELPER, ["state"]))
+        self.assertEqual(runner.calls[:2], [(HELPER, ["time", "state"]), (HELPER, ["state"])])
         texts = self.texts(tray)
         self.assertIn("u-blox GNSS receiver (1-4) — awake", texts)
         self.assertIn("u-blox GNSS receiver (1-5) — kept off", texts)
@@ -108,9 +127,10 @@ class Smoke(unittest.TestCase):
     def test_a_toggle_runs_pkexec_with_exactly_three_arguments_then_repolls(self):
         tray, runner = self.make([row()])
         tray.refresh()
+        del runner.calls[:]
         self.action(tray, "u-blox GNSS receiver (1-4)").trigger()
-        self.assertEqual(runner.calls[1], ("/usr/bin/pkexec", [HELPER, "park", "gnss-ublox@1-4"]))
-        self.assertEqual(runner.calls[2], (HELPER, ["state"]))
+        self.assertEqual(runner.calls[0], (PKEXEC, [HELPER, "park", "gnss-ublox@1-4"]))
+        self.assertIn((HELPER, ["state"]), runner.calls[1:])
 
     def test_a_dismissed_prompt_leaves_the_item_showing_the_truth(self):
         from hammunition_tray_qt.logic import ProcResult
@@ -138,8 +158,9 @@ class Smoke(unittest.TestCase):
     def test_forget_is_wake(self):
         tray, runner = self.make([row(summary="", parked=None, kept=True, attached=False)])
         tray.refresh()
+        del runner.calls[:]
         self.action(tray, "Forget gnss-ublox").trigger()
-        self.assertEqual(runner.calls[1], ("/usr/bin/pkexec", [HELPER, "wake", "gnss-ublox@1-4"]))
+        self.assertEqual(runner.calls[0], (PKEXEC, [HELPER, "wake", "gnss-ublox@1-4"]))
 
     def test_a_name_that_is_not_a_catalog_name_never_reaches_pkexec(self):
         tray, runner = self.make([row(name="x; reboot")])
@@ -166,6 +187,89 @@ class Smoke(unittest.TestCase):
         self.assertTrue(a.text().endswith("…"))
         self.assertEqual(a.toolTip(), long)
         self.assertTrue(tray.menu.toolTipsVisible())
+
+    # -- the Time section (Hammunition D-058) -----------------------------
+
+    def modes(self, tray):
+        labels = ("Automatic (the default)", "Prefer the GPS", "Network only", "GPS only")
+        return [a for a in tray.menu.actions() if a.text() in labels]
+
+    def test_the_time_section_is_a_heading_a_sentence_and_four_modes(self):
+        tray, runner = self.make([row()])
+        tray.refresh()
+        self.assertIn((HELPER, ["time", "state"]), runner.calls)
+        sections = [a.text() for a in tray.menu.actions() if a.isSeparator() and a.text()]
+        self.assertEqual(sections, ["Time"])
+        self.assertIn("The clock follows the GPS (offset +3.3 ms)", self.texts(tray))
+        modes = self.modes(tray)
+        self.assertEqual(len(modes), 4)
+        self.assertEqual([a.isChecked() for a in modes], [True, False, False, False])
+        self.assertTrue(all(a.isEnabled() and a.isCheckable() for a in modes))
+
+    def test_a_mode_runs_pkexec_helper_time_mode_then_repolls(self):
+        tray, runner = self.make([row()])
+        tray.refresh()
+        del runner.calls[:]
+        self.action(tray, "GPS only").trigger()
+        self.assertEqual(runner.calls[0], (PKEXEC, [HELPER, "time", "mode", "gps-only"]))
+        self.assertIn((HELPER, ["time", "state"]), runner.calls[1:])
+        self.assertIn((HELPER, ["state"]), runner.calls[1:])
+
+    def test_the_current_mode_asks_for_nothing(self):
+        tray, runner = self.make([row()])
+        tray.refresh()
+        del runner.calls[:]
+        self.action(tray, "Automatic (the default)").trigger()
+        self.assertEqual(runner.calls, [])
+        self.assertTrue(self.action(tray, "Automatic (the default)").isChecked())
+
+    def test_a_dismissed_mode_prompt_leaves_the_reported_mode_checked(self):
+        from hammunition_tray_qt.logic import ProcResult
+
+        tray, runner = self.make([row()])
+        runner.answers["time mode gps-only"] = ProcResult(started=True, code=126)
+        tray.refresh()
+        self.action(tray, "GPS only").trigger()
+        self.assertFalse(self.action(tray, "GPS only").isChecked())
+        self.assertTrue(self.action(tray, "Automatic (the default)").isChecked())
+        self.assertEqual(tray.state.action_error, "")
+
+    def test_an_unverified_mode_change_is_shown(self):
+        from hammunition_tray_qt.logic import ProcResult
+
+        tray, runner = self.make([row()])
+        runner.answers["time mode gps-only"] = ProcResult(
+            started=True, code=1, stderr="unverified: ntpsec did not restart\n"
+        )
+        tray.refresh()
+        self.action(tray, "GPS only").trigger()
+        self.assertIn("unverified: ntpsec did not restart", self.texts(tray))
+
+    def test_an_old_engine_says_update_once_and_no_error(self):
+        from hammunition_tray_qt.logic import ProcResult
+
+        tray, runner = self.make([row()])
+        code, out, err = POLLS["old-engine"]
+        runner.answers["time state"] = ProcResult(started=True, code=code, stdout=out, stderr=err)
+        for _ in range(3):
+            tray.refresh()
+        texts = self.texts(tray)
+        self.assertEqual(sum("Update Hammunition" in t for t in texts), 1)
+        self.assertEqual(self.modes(tray), [])
+        self.assertFalse(any("invalid choice" in t for t in texts))
+
+    def test_no_ntpsec_disables_the_modes(self):
+        tray, runner = self.make([row()])
+        runner.answers["time state"] = _time_ok(STATES["ntpsec-removed-conffile-left"])
+        tray.refresh()
+        self.assertTrue(all(not a.isEnabled() for a in self.modes(tray)))
+        self.assertIn("GPS time unavailable: ntpsec is not this machine's time daemon", self.texts(tray))
+
+    def test_no_rtc_is_in_the_tooltip(self):
+        tray, runner = self.make([row()])
+        runner.answers["time state"] = _time_ok(STATES["no-rtc"])
+        tray.refresh()
+        self.assertIn("No hardware clock", tray.icon.toolTip())
 
     def test_helper_missing(self):
         from hammunition_tray_qt.logic import ProcResult

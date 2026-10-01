@@ -107,6 +107,9 @@ class Tray(QObject):
         self.state = TrayState()
         self._polling = False
         self._repoll = False
+        # The time poll has its own guard: a slow ntpq must not hold up the
+        # device list, nor the other way round.
+        self._time_polling = False
         self._model: list[MenuEntry] | None = None
 
         self.menu = QMenu()
@@ -133,12 +136,26 @@ class Tray(QObject):
     # -- polling ---------------------------------------------------------
 
     def refresh(self) -> None:
+        self._refresh_time()
         if self._polling:
             self._repoll = True
             return
         self._polling = True
         program, args = logic.poll_argv()
         self.runner.run(program, args, self._polled, timeout_ms=POLL_TIMEOUT_MS)
+
+    def _refresh_time(self) -> None:
+        # Skipped, not queued, while one is running: the next tick asks again.
+        if self._time_polling:
+            return
+        self._time_polling = True
+        program, args = logic.time_poll_argv()
+        self.runner.run(program, args, self._time_polled, timeout_ms=POLL_TIMEOUT_MS)
+
+    def _time_polled(self, result: ProcResult) -> None:
+        self._time_polling = False
+        self.state = logic.apply_time_poll(self.state, result)
+        self._render()
 
     def _polled(self, result: ProcResult) -> None:
         self._polling = False
@@ -153,10 +170,20 @@ class Tray(QObject):
     # -- actions ---------------------------------------------------------
 
     def act(self, entry: MenuEntry) -> None:
-        if self.state.acting or entry.verb is None or entry.device is None:
+        if self.state.acting or entry.verb is None:
+            return
+        if entry.kind == "mode" and entry.checked:
+            # Already the mode: a checkable item unchecked itself on the
+            # click, so put it back and ask for nothing.
+            self._render(force=True)
             return
         try:
-            program, args = logic.action_argv(entry.verb, entry.device)
+            if entry.verb == "time-mode" and entry.mode is not None:
+                program, args = logic.time_mode_argv(entry.mode)
+            elif entry.device is not None:
+                program, args = logic.action_argv(entry.verb, entry.device)
+            else:
+                return
         except ValueError as exc:
             self.state = replace(self.state, action_error=str(exc))
             self._render(force=True)
@@ -199,13 +226,16 @@ class Tray(QObject):
             if entry.kind == "separator":
                 self.menu.addSeparator()
                 continue
+            if entry.kind == "heading":
+                self.menu.addSection(entry.text)
+                continue
             action = QAction(_menu_text(entry.text), self.menu)
             action.setToolTip(entry.text)
             action.setEnabled(entry.enabled)
-            if entry.kind == "toggle":
+            if entry.kind in ("toggle", "mode"):
                 action.setCheckable(True)
                 action.setChecked(bool(entry.checked))
-            if entry.kind in ("toggle", "forget"):
+            if entry.kind in ("toggle", "forget", "mode"):
                 action.triggered.connect(lambda _=False, e=entry: self.act(e))
             elif entry.kind == "quit":
                 action.triggered.connect(QApplication.quit)

@@ -10,6 +10,9 @@ its interfaces and the USB port can suspend; waking writes `1`. On a laptop
 that is the difference between a GNSS receiver drawing power all day and
 drawing none, without unplugging anything.
 
+**A Time section** shows what the clock follows and sets the mode of
+Hammunition's GPS time (its D-058) — [below](#the-time-section).
+
 **A parked device can now be kept off across a reboot**, by Hammunition's
 engine rather than this applet: the switch calls the same helper either way,
 and a device the engine is keeping off shows "kept off" here. That
@@ -36,6 +39,10 @@ waking one does, and goes through polkit exactly once per action.
   switches that cannot work.
 - At least one catalogued device marked parkable and plugged in. Today that
   is USB GNSS receivers; a WWAN modem class is expected to follow.
+- **For the Time section, Hammunition 0.18.0 or later.** An older engine's
+  helper does not know `time state`; the switches still work, and the
+  section says "Update Hammunition to 0.18.0 or later…" once instead of
+  failing on every poll.
 
 ## Install
 
@@ -54,7 +61,7 @@ for every account on the machine. Check it against the release's
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-sudo apt install ./hammunition-tray_0.2.0_all.deb
+sudo apt install ./hammunition-tray_0.4.0_all.deb
 ```
 
 It depends on Plasma 6 and the QML modules the applet imports, including two
@@ -96,6 +103,41 @@ belong to the engine, and `hammunition hardware unapply` removes those.
 - **A dismissed password prompt leaves the switch where it was.** Nothing was
   written, so nothing moves — the switch shows the device's real state, not
   what you asked for.
+
+## The Time section
+
+Below the switches, both front ends show Hammunition's GPS time (engine
+**D-058**, Hammunition 0.18.0 or later; the engine's own guide is its
+`docs/guides/gps-time.md`):
+
+- **What the clock follows now**: the GPS or the network, with the offset
+  ntpd reports, or *Holdover since HH:MM UTC* and for how long when nothing
+  is setting it.
+- **The four modes**, the current one checked: *Automatic (the default)*,
+  *Prefer the GPS*, *Network only*, *GPS only*. Choosing one runs
+  `/usr/bin/pkexec /usr/local/libexec/hammunition-devctl time mode MODE`:
+  one polkit prompt, the same action as park and wake. Only those four
+  names can reach the helper. A dismissed prompt leaves the old mode
+  checked. Exit 1 (written, but not verified) and exit 2 (refused) show the
+  helper's own reason.
+- **Greyed, with the reason**, when the GPS cannot feed the clock: ntpsec is
+  not the time daemon (Debian, Ubuntu and Kali default to
+  systemd-timesyncd, and an `apt remove`d ntpsec counts as none), where
+  the modes are disabled because the engine would refuse them; or the
+  receiver is parked while the mode would use it, where the modes stay
+  usable, to switch to *Network only* say.
+- **Notes**, small, under the sentence: the receiver is parked; *GPS only*
+  with no receiver attached; ntpd cannot read the GPS's time yet (pointing
+  at `hammunition time`, deliberately not at `hardware apply`, which
+  declines the grants on a machine without gpsd); ntpd started on a
+  DHCP-supplied configuration; anything the engine itself lists as a
+  problem.
+- **No hardware clock** is a line in the tooltip.
+
+Reading it is `hammunition-devctl time state` with no pkexec, polled with
+the devices. The Qt tray shows the same as a *Time* section in its menu,
+with the modes as checkable items; a menu has no opacity, so there the
+reason is the note.
 
 ## Xfce, LXQt, LXDE, MATE, Cinnamon: the Qt tray
 
@@ -179,7 +221,15 @@ chooses between, but that is an expectation, not a measurement.
 
 ## Status
 
-0.2.0. The engine half is Hammunition's **D-056**. Park and wake were run
+0.4.0. **The Time section** is tested against fake helper outputs for every
+state the engine's `time state` can report, with the applet's
+`timelogic.js` and the tray's `timelogic.py` required to agree word for
+word. On 2026-10-01 the real helper's `time state` on the Latitude 5430
+was read (no prompt, no change) and both modules read it the same way. No
+mode has been changed from either front end yet, and neither has been
+opened with the section on a real panel.
+
+The switches: The engine half is Hammunition's **D-056**. Park and wake were run
 from this applet against a u-blox GPS receiver on a Dell Latitude 5430
 Rugged running Parrot 7.3 on 2026-09-27: gpsd let go of the receiver within
 a second of parking and took it back within a second of waking, and the fix
