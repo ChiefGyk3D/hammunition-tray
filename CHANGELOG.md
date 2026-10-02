@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Clarify service status folding and start/stop/enable/disable read-back.
+- Keep the Plasma applet's device, service and radio row models stable when a poll returns unchanged data.
 
 ## [0.5.0] - 2026-10-02
 
