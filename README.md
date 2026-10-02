@@ -33,10 +33,11 @@ waking one does, and goes through polkit exactly once per action.
 ## Requirements
 
 - Plasma 6.
-- Hammunition installed, with `hammunition hardware apply` already run. That
-  is what installs `/usr/local/libexec/hammunition-devctl` and the polkit
-  action authorising it. Until then the applet says so rather than showing
-  switches that cannot work.
+- The device helper, `/usr/local/libexec/hammunition-devctl`, and the polkit
+  action authorising it ([below](#the-device-helper-hammunition-devctl)).
+  This repository installs both; Hammunition's `hardware apply` installs
+  its own copy of them too. Until one is there the applet says so rather
+  than showing switches that cannot work.
 - At least one catalogued device marked parkable and plugged in. Today that
   is USB GNSS receivers; a WWAN modem class is expected to follow.
 - **For the Time section, Hammunition 0.18.0 or later.** An older engine's
@@ -46,8 +47,8 @@ waking one does, and goes through polkit exactly once per action.
 
 ## Install
 
-Any of the three; each needs `hammunition hardware apply` to have been run,
-which installs the helper the switches call.
+Any of the three. Each needs the device helper, which this repository's
+installers place too (the `.deb` as its own package, `hammunition-devctl`).
 
 **Through Hammunition** (once its catalog carries the applet):
 
@@ -75,16 +76,94 @@ and `qml6-module-org-kde-notifications`); apt pulls them in.
 ```
 
 Runs as **you**, not as root: `kpackagetool6` installs into
-`~/.local/share/plasma/plasmoids`. `./uninstall.sh` removes it. A per-user
-copy **shadows** the package, so if you move to the `.deb`, run
-`./uninstall.sh` once.
+`~/.local/share/plasma/plasmoids`, and the helper step lists the root-owned
+files it needs and asks for `sudo` once, after you confirm (`--no-helper`
+skips it, `--yes` answers the question). `./uninstall.sh` removes the
+applet; `./uninstall.sh --helper` also removes the helper this repository
+installed. A per-user copy **shadows** the package, so if you move to the
+`.deb`, run `./uninstall.sh` once.
 
 After any install or upgrade, Plasma keeps the old version loaded until you
 run `systemctl --user restart plasma-plasmashell` or log in again. Then add
 *Hammunition Devices* to your panel or system tray.
 
-Removing the applet never removes the helper or the polkit action; they
-belong to the engine, and `hammunition hardware unapply` removes those.
+Removing the applet does not remove the helper unless you say `--helper`,
+and a helper that Hammunition's `hardware apply` wrote is never removed by
+this repository's scripts: `hammunition hardware unapply` removes that one.
+
+## The device helper, `hammunition-devctl`
+
+This repository is the device project of the Hammunition suite, so the
+program that actually changes a device lives here: the one root helper that
+the applet, the Qt tray, Hammunition's CLI and its generated menu entries
+all call. It used to be part of the engine (its D-056); it moved here with
+its tests. Everything it accepts and prints is in
+**[`docs/contract.md`](docs/contract.md)**, which is the interface and is
+versioned (`hammunition-devctl --version` prints `hammunition-devctl contract 1`).
+
+What it does:
+
+- `park`/`wake` a catalogued USB device, `linger on|off`, `time mode|state`
+  (the engine's GPS time): the engine's verbs, argv and JSON unchanged.
+- `services state` and `services start|stop|enable|disable NAME`: the
+  services Hammunition manages (the GPS tether, gpsd, the clock, the rig).
+  A user service is `systemctl --user` as you; a system one needs pkexec and
+  the same polkit action.
+- `radio state` and `radio on|off wwan|wifi|bluetooth`: your own session's
+  switches, through `nmcli` and `bluetoothctl`, no root.
+
+What it never does: run a command whose words come from its arguments. Every
+verb has a fixed argv; a service is found by name in an allow-list file the
+helper reads (`/etc/hammunition/devctl-services.yaml`, and
+`~/.config/hammunition/devctl-services.yaml` for user services, never read
+by a root process); a device by name in `/etc/hammunition/devctl-devices.yaml`.
+The Hammunition engine writes those files; until it writes the devices file
+the helper falls back to importing the engine's catalog and says so
+(`state --with-source`).
+
+**Layout: a sibling package, `devctl/hammunition_devctl`, not a submodule of
+`hammunition_tray_qt`.** The helper is the one thing here that runs as
+root, so it must not share an import path, a test target or a dependency
+with PyQt6, and it must install without a desktop (a headless station has
+no use for a tray and every use for `services` and `radio`). The Plasma
+applet is not Python at all and calls the same helper. The package has its
+own `devctl/pyproject.toml`, so `pip install ./devctl` gives the console
+script `hammunition-devctl`; the system install uses a copy under
+`/usr/local/lib` (checkout install) or `/usr/share` (the `.deb`) behind the
+wrapper polkit authorises, because root must never run code from a tree
+somebody else can write.
+
+**Install**, any one of:
+
+```sh
+sudo apt install ./hammunition-devctl_*_all.deb     # its postinst writes the wrapper
+./install.sh --helper-only                          # from a checkout; asks for sudo once
+hammunition install hammunition-tray                # the engine's catalog unit
+```
+
+The wrapper runs `/usr/bin/python3` by default. The `time` verbs belong to
+the engine (`hammunition.gpstime`), so they answer "the Hammunition engine is
+not installed" unless the wrapper's interpreter can import it: install with
+`./install.sh --helper-only --interpreter /path/to/engine/venv/bin/python`
+(the engine's installer does this) and they work.
+
+**How the engine calls it**: by path, `/usr/local/libexec/hammunition-devctl`,
+as the tray does: `state`, `services state` and `radio state` directly; `park`,
+`wake`, `linger`, `time mode` and system-scope `services` verbs through
+`/usr/bin/pkexec`. It never imports this package, and never runs
+`systemctl` itself.
+
+Tests: `python -m pytest tests` (the helper's tests need PyYAML and pytest);
+CI also runs them on Python 3.11 and 3.13 from a real `pip install ./devctl`
+with `mypy --strict`. No test starts a real `systemctl`, `nmcli` or
+`bluetoothctl`: a fake runner keyed by argv answers, and any command nobody
+faked fails the test.
+
+**Not yet measured:** the new verbs have been exercised against fakes only.
+`services` and `radio` have not been run against a real `systemctl`,
+NetworkManager or BlueZ, and a WWAN modem that ModemManager has disabled may
+or may not still be listed by `nmcli device status`, which is what `present`
+reads for it.
 
 ## What you will see
 

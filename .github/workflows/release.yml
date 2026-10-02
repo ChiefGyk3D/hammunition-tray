@@ -47,7 +47,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: python3 -m unittest discover -s tests -v
+      - run: python3 -m pip install pytest PyYAML
+      - run: python3 -m pytest tests -v
       - run: ./packaging/debian/build.sh dist
       - name: installs on Parrot, files in place, removes cleanly
         run: |
@@ -73,6 +74,15 @@ jobs:
             apt-get remove -y -qq hammunition-tray-qt
             test ! -e /usr/bin/hammunition-tray-qt
             test ! -e /usr/share/hammunition-tray-qt
+            # The helper: its files, the wrapper its postinst writes, the
+            # contract number it answers through that wrapper, and a clean removal.
+            apt-get install -y -qq /dist/hammunition-devctl_*_all.deb
+            test -f /usr/share/polkit-1/actions/com.chiefgyk3d.hammunition.devctl.policy
+            test "$(/usr/local/libexec/hammunition-devctl --version)" = "hammunition-devctl contract 1"
+            /usr/local/libexec/hammunition-devctl services state | grep -qF "\"kind\": \"services\""
+            apt-get remove -y -qq hammunition-devctl
+            test ! -e /usr/local/libexec/hammunition-devctl
+            test ! -e /usr/share/hammunition-devctl
             apt-get purge -y -qq hammunition-tray-qt
             test ! -e /etc/xdg/autostart/hammunition-tray-qt.desktop
           '
@@ -82,7 +92,8 @@ jobs:
           cd dist
           test -f hammunition-tray_*_all.deb
           test -f hammunition-tray-qt_*_all.deb
-          test "$(ls ./*.deb | wc -l)" -eq 2
+          test -f hammunition-devctl_*_all.deb
+          test "$(ls ./*.deb | wc -l)" -eq 3
           sha256sum ./* > SHA256SUMS && cat SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

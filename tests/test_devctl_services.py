@@ -30,10 +30,16 @@ def files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
 
 
 def _as_root(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Run as root without being root: the euid, and the file-trust check that a
-    root process applies (the test files belong to the test's own user)."""
+    """Run as root without being root: the euid, the file-trust check that a
+    root process applies (the test files belong to the test's own user), and
+    the writability gate on the interpreter and package, which measures the
+    machine running the suite (a venv under a group-writable home) and is
+    tested on its own in test_devctl.py."""
+    from hammunition_devctl import devctl
+
     monkeypatch.setattr(os, "geteuid", lambda: 0)
     monkeypatch.setattr(datafiles, "_untrusted_for_root", lambda path: None)
+    monkeypatch.setattr(devctl, "_refuse_or_warn_if_unsafe", lambda: None)
 
 
 def _linger(state: str = "no") -> dict[tuple[str, ...], Result]:

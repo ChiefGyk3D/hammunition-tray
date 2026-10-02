@@ -159,7 +159,10 @@ def test_a_radio_whose_tool_is_absent_is_exit_2(capsys: pytest.CaptureFixture[st
 def test_the_switches_refuse_to_run_as_root(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    from hammunition_devctl import devctl
+
     monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setattr(devctl, "_refuse_or_warn_if_unsafe", lambda: None)
     runner = FakeRunner()
     set_runner(runner)
     assert main(["radio", "off", "wwan"]) == 2

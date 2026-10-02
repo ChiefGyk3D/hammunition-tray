@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hammunition-devctl"
+# The contract number lives in hammunition_devctl/__init__.py and docs/contract.md;
+# this is the package's own release, kept equal to the tray's by tests/test_release.py.
+version = "0.4.0"
+description = "The device helper of the Hammunition suite: park and wake devices, control services and radios"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6"]
+authors = [{ name = "ChiefGyk3D", email = "19499446+ChiefGyk3D@users.noreply.github.com" }]
+
+[project.urls]
+Homepage = "https://github.com/ChiefGyk3D/hammunition-tray"
+
+[project.scripts]
+hammunition-devctl = "hammunition_devctl.devctl:main"
+
+[tool.setuptools]
+packages = ["hammunition_devctl"]

@@ -1,0 +1,28 @@
+#!/bin/sh
+# hammunition-devctl: put the wrapper polkit authorises where the polkit
+# action says it is. The action annotates /usr/local/libexec/hammunition-devctl
+# (a fixed path every front end and the engine call), which is outside what a
+# package owns, so the postinst writes it and the prerm removes it -- and only
+# ever a file that carries this package's mark. A wrapper another installer
+# wrote (the Hammunition engine's `hardware apply` does) is left as it is.
+set -e
+
+mark='# Installed by hammunition-tray (hammunition-devctl, D-056).'
+dest=/usr/local/libexec/hammunition-devctl
+src=/usr/share/hammunition-devctl/wrapper
+
+case "$1" in
+    configure)
+        if [ -e "$dest" ] && ! grep -qxF "$mark" "$dest"; then
+            echo "hammunition-devctl: $dest was written by another installer" >&2
+            echo "  (the Hammunition engine's 'hardware apply' does); left as it is." >&2
+            echo "  Replace it with: sudo install -m 0755 $src $dest" >&2
+        else
+            mkdir -p "$(dirname "$dest")"
+            install -m 0755 "$src" "$dest.new"
+            mv -f "$dest.new" "$dest"
+        fi
+        ;;
+esac
+
+exit 0
