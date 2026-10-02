@@ -491,6 +491,39 @@ class Controls(unittest.TestCase):
         self.assertNotIn("root.servicesRows", full)
         self.assertNotIn("root.radiosRows", full)
 
+    def test_unchanged_poll_rows_keep_their_existing_array(self):
+        main = self.main()
+        for rows, replacement in (
+            ("devices", "nextDevices"),
+            ("servicesRows", "nextServicesRows"),
+            ("radiosRows", "nextRadiosRows"),
+        ):
+            with self.subTest(rows=rows):
+                self.assertRegex(
+                    main,
+                    rf"if\s*\(!Controls\.sameRows\({rows}, {replacement}\)\)\s*"
+                    rf"{rows}\s*=\s*{replacement}\s*;",
+                )
+
+    def test_unchanged_effective_rows_keep_their_cached_array(self):
+        main = self.main()
+        for name, cache, helper, rows in (
+            ("Services", "effectiveServicesCache", "effectiveServices", "servicesRows"),
+            ("Radios", "effectiveRadiosCache", "effectiveRadios", "radiosRows"),
+        ):
+            with self.subTest(name=name):
+                self.assertIn(f"property var {cache}: null", main)
+                match = re.search(
+                    rf"function effective{name}Rows\(\)\s*\{{(.*?)\n    \}}",
+                    main,
+                    re.S,
+                )
+                self.assertIsNotNone(match, f"effective{name}Rows() is gone or was renamed")
+                body = match.group(1)
+                self.assertIn(f"Controls.{helper}({rows}, pending)", body)
+                self.assertIn(f"Controls.sameRows({cache}, next)", body)
+                self.assertIn(f"{cache} = next", body)
+
     def test_a_dismissed_prompt_leaves_the_truth_checked(self):
         full = self.full()
         self.assertIn("checked = Qt.binding(() => Controls.runChecked(modelData))", full)

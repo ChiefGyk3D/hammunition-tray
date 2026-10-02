@@ -172,6 +172,10 @@ Argv `services state`. No pkexec. stdout, one document:
 - `static` stands for any unit with no `[Install]` of its own (systemd's
   `static`, `indirect`, `generated`, `transient`, `alias`); a runtime
   enable counts as `enabled`.
+- `masked`, `masked-runtime`, `linked`, `linked-runtime` and `bad` unit-file
+  states fold to `enabled: "unknown"`. `enable` is verified only by
+  `enabled`; `disable` is verified by any other state, so `unknown` after
+  `disable` counts as disabled.
 - Rows are the system file's, in file order, then the user file's. The order
   carries no meaning; a front end sorts to taste. A name is unique across
   both files: a user row whose name a system row already has is dropped (and
@@ -195,8 +199,10 @@ nothing found through a `PATH` is run with root's authority.
 - The name is in a file but the unit is not installed (`LoadState` is
   `not-found`): exit 2, `error: ... is not installed`.
 - The verb's effect is read back (`start`: `active` or `activating`; `stop`:
-  not `active`; `enable`: `enabled`; `disable`: not `enabled`). A mismatch
-  or a failing `systemctl` is exit 1, `unverified:` or `error:` on stderr.
+  neither `active` nor `activating` afterwards; `enable`: `enabled`;
+  `disable`: not `enabled`). An `activating` unit, for example during an
+  automatic restart, counts as not stopped. A mismatch or a failing
+  `systemctl` is exit 1, `unverified:` or `error:` on stderr.
 - stdout is empty on success.
 - Nothing in the argv is ever a unit name or a command: the unit comes
   from the allow-list row, and the verb is one of four words.

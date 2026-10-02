@@ -109,6 +109,7 @@ out.pendingKeys = {
   enable: L.servicePending("enable", "x"), disable: L.servicePending("disable", "x"),
   radioOn: L.radioPending("wwan", true), radioOff: L.radioPending("wwan", false),
 };
+out.sameRows = Object.fromEntries(input.sameRows.map(([name, a, b]) => [name, L.sameRows(a, b)]));
 out.effectiveRadios = L.effectiveRadios(
   L.parseRadios(JSON.stringify(input.radios.on)), { "radio:wwan:enabled": false });
 for (const [name, [code, stderr]] of Object.entries(input.errors)) {
@@ -190,6 +191,18 @@ SOURCES = {
 FRESH = ((0, 0, False), (0, 1, False), (1, 1, False), (1, 1, True), (2, 1, False),
          (None, 5, False), (None, 5, True))
 
+SAME_ROWS_CASES = (
+    ("same-row-key-order", [{"name": "device", "parked": False}], [{"parked": False, "name": "device"}]),
+    ("changed-parked", [{"parked": False}], [{"parked": True}]),
+    ("changed-enabled", [{"enabled": True}], [{"enabled": False}]),
+    ("changed-active", [{"active": "active"}], [{"active": "inactive"}]),
+    ("null-vs-empty-array", None, []),
+    ("nested-key-order", {"rows": [{"state": {"active": "active", "enabled": []}}]},
+     {"rows": [{"state": {"enabled": [], "active": "active"}}]}),
+    ("empty-values", {"rows": [], "meta": {}}, {"meta": {}, "rows": []}),
+    ("nested-change", {"rows": [{"values": [None, {}]}]}, {"rows": [{"values": [None, {"x": 1}]}]}),
+)
+
 
 def as_js(obj):
     return json.loads(json.dumps(dataclasses.asdict(obj)))
@@ -209,6 +222,7 @@ class Parity(unittest.TestCase):
                 "errors": ERRORS,
                 "sources": list(SOURCES),
                 "fresh": [[None if s is None else s, e, a] for s, e, a in FRESH],
+                "sameRows": [list(case) for case in SAME_ROWS_CASES],
             }
         )
         p = subprocess.run(
@@ -354,6 +368,13 @@ class Parity(unittest.TestCase):
                     self.js["fresh"][f"{started}/{epoch}/{acting}"],
                     controls.pending_fresh(started, epoch, acting),
                 )
+
+    def test_same_rows_compares_json_values_deeply_and_ignores_object_key_order(self):
+        for name, _a, _b in SAME_ROWS_CASES:
+            with self.subTest(name=name):
+                self.assertEqual(self.js["sameRows"][name], name in {
+                    "same-row-key-order", "nested-key-order", "empty-values",
+                })
 
     def test_main_qml_dispatches_through_source_kind_still(self):
         main = (UI / "main.qml").read_text()

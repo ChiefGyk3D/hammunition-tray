@@ -93,6 +93,10 @@ def test_a_unit_that_is_not_installed_is_listed_as_not_found_never_omitted(
         ("indirect", "static"),
         ("generated", "static"),
         ("masked", "unknown"),
+        ("masked-runtime", "unknown"),
+        ("linked", "unknown"),
+        ("linked-runtime", "unknown"),
+        ("bad", "unknown"),
         ("", "unknown"),
     ],
 )
@@ -267,6 +271,42 @@ def test_each_verb_is_its_own_systemctl_word_and_is_read_back(
     )
     set_runner(runner)
     assert main(["services", verb, "time"]) == 0
+
+
+@pytest.mark.parametrize(
+    ("active", "expected"),
+    [("activating", 1), ("inactive", 0), ("failed", 0)],
+)
+def test_stop_read_back_requires_inactive_or_failed_not_activating(
+    files: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    active: str,
+    expected: int,
+) -> None:
+    system, _ = files
+    write_services(system, "system", [("time", "ntpsec.service", "the clock")])
+    _as_root(monkeypatch)
+    before = show("ntpsec.service", active="active")
+    after = show("ntpsec.service", active=active)
+    set_runner(
+        FakeRunner(
+            {
+                before[0]: [before[1], after[1]],
+                ("/usr/bin/systemctl", "stop", "ntpsec.service"): Result(0),
+            }
+        )
+    )
+    assert main(["services", "stop", "time"]) == expected
+    if active == "activating":
+        assert "unverified:" in capsys.readouterr().err
+    else:
+        assert capsys.readouterr().err == ""
+
+
+def test_contract_documents_activating_as_not_stopped() -> None:
+    contract = Path(__file__).resolve().parents[1] / "docs" / "contract.md"
+    assert "counts as not stopped" in contract.read_text()
 
 
 def test_a_change_that_does_not_read_back_is_exit_1(
