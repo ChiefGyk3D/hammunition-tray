@@ -1,6 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [0.5.0] - 2026-10-02
+
+Two changes: the device helper moves into this repository, and both front
+ends gain a Controls panel (Devices, Services, Radios).
+
+### The device helper moves here
 
 - **The device helper moves here.** `hammunition-devctl`, the one root helper
   every front end calls, comes from the Hammunition engine (its D-056) into
@@ -29,7 +34,7 @@
 - CI: the whole test directory runs under pytest; a new job tests the helper
   on Python 3.11 and 3.13 from a real `pip install ./devctl`, with
   `mypy --strict`; the release checks the third package on Parrot.
-### 0.5.0 (the Controls panel)
+### The Controls panel
 
 - **One "Controls" panel, three groups**, worded identically in the Plasma
   applet and the Qt tray: **Devices** (today's rows, unchanged),

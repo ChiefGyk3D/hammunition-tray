@@ -65,7 +65,7 @@ for every account on the machine. Check it against the release's
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-sudo apt install ./hammunition-tray_0.4.0_all.deb
+sudo apt install ./hammunition-tray_0.5.0_all.deb
 ```
 
 It depends on Plasma 6 and the QML modules the applet imports, including two
@@ -369,7 +369,7 @@ chooses between, but that is an expectation, not a measurement.
 
 ## Status
 
-0.5.0 (unreleased). **The Controls panel** is tested against fake helper
+0.5.0. **The Controls panel and the helper's move here** is tested against fake helper
 documents for every state of a service and a radio, with the applet's
 `controlslogic.js` and the tray's `controls.py` required to agree word for
 word, and the Qt tray's menu is driven end to end by a fake runner. Neither

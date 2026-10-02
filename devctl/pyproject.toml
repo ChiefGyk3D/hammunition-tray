@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "hammunition-devctl"
 # The contract number lives in hammunition_devctl/__init__.py and docs/contract.md;
 # this is the package's own release, kept equal to the tray's by tests/test_release.py.
-version = "0.4.0"
+version = "0.5.0"
 description = "The device helper of the Hammunition suite: park and wake devices, control services and radios"
 license = { text = "GPL-3.0-or-later" }
 requires-python = ">=3.11"
