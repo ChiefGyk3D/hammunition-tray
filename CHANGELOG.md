@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Correct README details on catalog installs, helper handover, lists and apply.
+
 ## [0.5.0] - 2026-10-02
 
 Two changes: the device helper moves into this repository, and both front
