@@ -18,7 +18,7 @@ from hammunition_devctl.polkit import policy_xml
 
 def test_enable_when_off_runs_loginctl_and_records_ours() -> None:
     plan = plan_linger(on=True, uid=1000, username="op", already_on=False, existing=None)
-    assert plan.command == ("loginctl", "enable-linger", "op")
+    assert plan.command == ("/usr/bin/loginctl", "enable-linger", "op")
     assert plan.record is not None and plan.record.enabled_by_us is True
 
 
@@ -31,7 +31,7 @@ def test_enable_when_already_on_records_not_ours_and_runs_nothing() -> None:
 def test_disable_only_when_ours() -> None:
     ours = LingerRecord(uid=1000, enabled_by_us=True)
     plan = plan_linger(on=False, uid=1000, username="op", already_on=True, existing=ours)
-    assert plan.command == ("loginctl", "disable-linger", "op")
+    assert plan.command == ("/usr/bin/loginctl", "disable-linger", "op")
     assert plan.remove_record is True
 
 

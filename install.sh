@@ -74,6 +74,10 @@ case "${interpreter}" in
     /*) ;;
     *) echo "--interpreter must be an absolute path, got: ${interpreter}" >&2; exit 2 ;;
 esac
+if [[ ${want_helper} -eq 1 && ! -x "${interpreter}" ]]; then
+    echo "--interpreter ${interpreter} is not an executable file; the wrapper would exec nothing." >&2
+    exit 2
+fi
 
 src="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -105,6 +109,30 @@ install_applet() {
     echo "Installed. Add 'Hammunition Devices' to your panel or system tray."
 }
 
+# The first component of PATH (as given, then resolved) that an unprivileged
+# account owns, or nothing. A wrapper that runs a Python from such a tree runs
+# whatever that account puts there, as root.
+non_root_owned_component() {
+    local given="$1" p
+    for p in "${given}" "$(realpath -- "${given}" 2>/dev/null || echo "${given}")"; do
+        while [[ -n "${p}" && "${p}" != "/" && "${p}" != "." ]]; do
+            if [[ "$(stat -c %u -- "${p}" 2>/dev/null || echo 0)" != "0" ]]; then
+                echo "${p}"
+                return 0
+            fi
+            p="$(dirname -- "${p}")"
+        done
+    done
+}
+
+# True when the hammunition-devctl .deb installed the helper: it carries the
+# same mark, so without this the two routes would overwrite each other's files.
+package_owns_helper() {
+    local root="$1" policy="$2"
+    [[ -d "${root}/usr/share/hammunition-devctl" ]] && return 0
+    command -v dpkg-query >/dev/null && dpkg-query -S "${root}${policy}" >/dev/null 2>&1
+}
+
 install_helper() {
     local root="${HAMMUNITION_DEVCTL_ROOT:-}"
     local libdir="/usr/local/lib/hammunition-devctl"
@@ -115,6 +143,20 @@ install_helper() {
     read -r -a as_root <<<"${HAMMUNITION_DEVCTL_SUDO-sudo}"
 
     command -v python3 >/dev/null || { echo "python3 is not on PATH." >&2; exit 1; }
+    if package_owns_helper "${root}" "${policy}"; then
+        echo
+        echo "The helper is installed by the hammunition-devctl package (apt); not"
+        echo "replaced. Upgrade or remove it with apt."
+        return 0
+    fi
+    local risky
+    risky="$(non_root_owned_component "${interpreter}")"
+    if [[ -n "${risky}" ]]; then
+        echo "Note: ${risky} is owned by a non-root account, and the wrapper will run" >&2
+        echo "${interpreter} as root through polkit: whoever owns that tree can run" >&2
+        echo "code as root by editing it. The documented engine install (a venv under" >&2
+        echo "\$HOME) is this shape; the helper refuses a tree any account can write." >&2
+    fi
     if ! "${interpreter}" -c 'import yaml' 2>/dev/null; then
         echo "Note: ${interpreter} cannot import yaml (python3-yaml); the helper" >&2
         echo "needs it to read its data files. Install python3-yaml, or point" >&2
@@ -157,6 +199,8 @@ install_helper() {
         [[ ${answer} == [yY]* ]] || { echo "Helper not installed."; return 0; }
     fi
 
+    # A module an older version shipped and this one does not must not survive.
+    "${as_root[@]}" rm -rf -- "${root}${libdir}/hammunition_devctl"
     "${as_root[@]}" install -d -m 0755 "${root}${libdir}" "${root}${libdir}/hammunition_devctl" \
         "$(dirname "${root}${wrapper}")" "$(dirname "${root}${policy}")"
     "${as_root[@]}" install -m 0755 "${src}/devctl/hammunition-devctl" "${root}${libdir}/hammunition-devctl"

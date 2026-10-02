@@ -61,10 +61,10 @@ def test_install_places_the_files_with_their_modes(root: Path) -> None:
 
 
 def test_the_wrapper_names_the_copy_in_usr_local_never_the_checkout(root: Path) -> None:
-    _script("install.sh", root, "--helper-only", "--yes", "--interpreter", "/opt/engine/bin/python")
+    _script("install.sh", root, "--helper-only", "--yes", "--interpreter", sys.executable)
     text = (root / WRAPPER).read_text()
     assert text.splitlines()[1] == MARK
-    assert "exec /opt/engine/bin/python -I /usr/local/lib/hammunition-devctl/hammunition-devctl" in text
+    assert f"exec {sys.executable} -I /usr/local/lib/hammunition-devctl/hammunition-devctl" in text
     assert str(ROOT) not in text
     assert str(ROOT) not in (root / POLICY).read_text()
 

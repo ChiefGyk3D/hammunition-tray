@@ -47,6 +47,7 @@ from hammunition_devctl.linger import (
     write_record,
 )
 from hammunition_devctl.polkit import (
+    HELPER_PATH,
     WritabilityFinding,
     WritabilityRisk,
     describe_refusal,
@@ -169,6 +170,24 @@ def resolve_kept(name: str, kept: list[KeptEntry]) -> KeptEntry:
     return candidates[0]
 
 
+def _needs_root(verb: str) -> int | None:
+    """Exit 2 for a verb that changes the machine, run without root.
+
+    Checked after a name has been resolved and before anything is written, so
+    a refusal about the name still says why, and nothing is half done: without
+    this a `linger on` run unprivileged can enable linger and then fail to
+    write its record, and a later `linger off` refuses because it is not ours.
+    """
+    if os.geteuid() == 0:
+        return None
+    print(
+        f"error: {verb} changes the machine and needs root; run it through pkexec "
+        f"(/usr/bin/pkexec {HELPER_PATH} {verb} ...)",
+        file=sys.stderr,
+    )
+    return EXIT_UNPLANNABLE
+
+
 def _do(verb: str, name: str, *, keep: bool = True) -> int:
     found, skipped = _survey()
     for unit, why in skipped:
@@ -185,6 +204,9 @@ def _do(verb: str, name: str, *, keep: bool = True) -> int:
     except PowerError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_UNPLANNABLE
+    refused = _needs_root(verb)
+    if refused is not None:
+        return refused
     problems = execute(plan)
     for problem in problems:
         print(f"unverified: {problem}", file=sys.stderr)
@@ -261,8 +283,56 @@ _NO_ENGINE = (
 )
 
 
+def _engine_dir() -> str | None:
+    """Where the engine's ``hammunition`` package is on this interpreter's path,
+    found without importing it, or None when there is none."""
+    import importlib.util
+
+    try:
+        spec = importlib.util.find_spec("hammunition")
+    except (ImportError, ValueError):
+        return None
+    locations = list(spec.submodule_search_locations or []) if spec else []
+    return locations[0] if locations else None
+
+
+def engine_importable_as_root() -> bool:
+    """Whether this process may import the engine at all.
+
+    Importing runs the engine's code with this process's privileges, so as root
+    the tree it lives in gets the same D-056 check the helper's own package
+    gets: refused when *any* local account can write it, a warning when one
+    specific non-root account owns it (the documented install, a venv under
+    ``$HOME``). Unprivileged, there is nothing to protect and it is always
+    allowed.
+    """
+    if os.geteuid() != 0:
+        return True
+    where = _engine_dir()
+    if where is None:
+        return True  # nothing to import; the import itself will say so
+    finding = writable_including_symlink_target(where)
+    if finding is None:
+        return True
+    if finding.risk is WritabilityRisk.GROUP_OR_OTHER_WRITABLE:
+        print(
+            f"note: not importing the Hammunition engine as root: {describe_refusal([finding])}",
+            file=sys.stderr,
+        )
+        return False
+    print(
+        f"warning: the Hammunition engine at {where} is owned by a non-root account "
+        f"({finding.path}), and this process is importing it as root.",
+        file=sys.stderr,
+    )
+    return True
+
+
 def _gpstime() -> Any | None:
-    """The engine's ``gpstime`` package, or None when this interpreter has no engine."""
+    """The engine's ``gpstime`` package, or None when this interpreter has no
+    engine, or has one root may not import."""
+    if not engine_importable_as_root():
+        return None
     try:
         import hammunition.gpstime.apply as apply  # type: ignore[import-not-found,unused-ignore]
         import hammunition.gpstime.mode as mode  # type: ignore[import-not-found,unused-ignore]
@@ -303,11 +373,14 @@ def caller_uid() -> int:
 
 
 def _linger_is_on(username: str) -> bool:
-    result = run(("loginctl", "show-user", username, "--property=Linger", "--value"))
+    result = run((services.LOGINCTL, "show-user", username, "--property=Linger", "--value"))
     return result.ok and result.stdout.strip().lower() in ("yes", "1", "true")
 
 
 def _linger(on: bool) -> int:
+    refused = _needs_root("linger")
+    if refused is not None:
+        return refused
     uid = caller_uid()
     try:
         username = pwd.getpwuid(uid).pw_name
@@ -319,7 +392,7 @@ def _linger(on: bool) -> int:
         uid=uid,
         username=username,
         already_on=_linger_is_on(username),
-        existing=read_record(),
+        existing=_read_record(),
     )
     if plan.command is not None:
         result = run(plan.command)
@@ -335,6 +408,9 @@ def _linger(on: bool) -> int:
 
 
 def _time_mode(mode: str) -> int:
+    refused = _needs_root("time mode")
+    if refused is not None:
+        return refused
     engine = _gpstime()
     if engine is None:
         print(_NO_ENGINE.format(what="set"), file=sys.stderr)
@@ -350,13 +426,22 @@ def _time_mode(mode: str) -> int:
     return EXIT_FAILED if problems else EXIT_OK
 
 
+def _read_record() -> Any:
+    """The linger record, its problems said on stderr like every other note."""
+    notes: list[str] = []
+    record = read_record(notes=notes)
+    for note in notes:
+        print(f"note: {note}", file=sys.stderr)
+    return record
+
+
 def _services_state() -> int:
     notes: list[str] = []
     rows = services.load_services(notes)
     for note in notes:
         print(f"note: {note}", file=sys.stderr)
     uid = caller_uid()
-    record = read_record()
+    record = _read_record()
     ours = bool(record and record.uid == uid and record.enabled_by_us)
     print(json.dumps(services.state_document(rows, services.linger_document(uid, ours))))
     return EXIT_OK

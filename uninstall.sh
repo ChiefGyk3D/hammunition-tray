@@ -47,6 +47,13 @@ remove_applet() {
     echo "Applet removed."
 }
 
+# True when the hammunition-devctl .deb installed the helper (see install.sh).
+package_owns_helper() {
+    local root="$1" policy="$2"
+    [[ -d "${root}/usr/share/hammunition-devctl" ]] && return 0
+    command -v dpkg-query >/dev/null && dpkg-query -S "${root}${policy}" >/dev/null 2>&1
+}
+
 remove_helper() {
     local root="${HAMMUNITION_DEVCTL_ROOT:-}"
     local libdir="/usr/local/lib/hammunition-devctl"
@@ -56,6 +63,11 @@ remove_helper() {
     local -a as_root
     read -r -a as_root <<<"${HAMMUNITION_DEVCTL_SUDO-sudo}"
 
+    if package_owns_helper "${root}" "${policy}"; then
+        echo "The helper is installed by the hammunition-devctl package (apt); remove it"
+        echo "with \`sudo apt remove hammunition-devctl\`. Left alone."
+        return 0
+    fi
     if [[ ! -e "${root}${wrapper}" ]]; then
         echo "No helper at ${wrapper}; nothing to remove."
         return 0

@@ -24,6 +24,8 @@ __all__ = [
     "ACTIVE",
     "ENABLED",
     "VERBS",
+    "LOGINCTL",
+    "SYSTEMCTL",
     "Service",
     "ServiceError",
     "control",
@@ -39,6 +41,11 @@ ENABLED = ("enabled", "disabled", "static", "not-found", "unknown")
 _NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 _UNIT = re.compile(r"[A-Za-z0-9][A-Za-z0-9:_.@-]{0,127}\.(service|socket|timer|path)")
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+SYSTEMCTL = "/usr/bin/systemctl"
+LOGINCTL = "/usr/bin/loginctl"
+"""Absolute, because the privileged ones run as root: nothing found through a
+PATH is ever started with root's authority."""
 
 _STATIC = ("static", "indirect", "generated", "transient", "alias")
 
@@ -101,13 +108,21 @@ def load_services(notes: list[str], *, user_file: Path | None = None) -> list[Se
     that is asking, and what root controls must not be that account's to
     choose. A user row whose name a system row already has is dropped.
     """
-    rows = _rows(datafiles.SERVICES_FILE, "system", notes)
+    rows: list[Service] = []
+    taken: set[str] = set()
+    for row in _rows(datafiles.SERVICES_FILE, "system", notes):
+        if row.name in taken:
+            notes.append(f"service {row.name!r} appears twice in the system file; the first is kept")
+            continue
+        taken.add(row.name)
+        rows.append(row)
     if os.geteuid() == 0:
         return rows
-    taken = {s.name for s in rows}
     for row in _rows(user_file or datafiles.user_services_file(), "user", notes):
         if row.name in taken:
-            notes.append(f"user service {row.name!r} shares a name with a system service; dropped")
+            notes.append(
+                f"user service {row.name!r} shares a name with a service already listed; dropped"
+            )
             continue
         taken.add(row.name)
         rows.append(row)
@@ -115,7 +130,7 @@ def load_services(notes: list[str], *, user_file: Path | None = None) -> list[Se
 
 
 def _systemctl(service: Service, *words: str) -> tuple[str, ...]:
-    return ("systemctl", *(("--user",) if service.scope == "user" else ()), *words)
+    return (SYSTEMCTL, *(("--user",) if service.scope == "user" else ()), *words)
 
 
 def read_status(service: Service) -> tuple[str, str, str]:
@@ -161,7 +176,7 @@ def linger_document(uid: int, record_ours: bool) -> dict[str, Any]:
         username = pwd.getpwuid(uid).pw_name
     except KeyError:
         return {"state": "unknown", "ours": record_ours}
-    result = run(("loginctl", "show-user", username, "--property=Linger", "--value"))
+    result = run((LOGINCTL, "show-user", username, "--property=Linger", "--value"))
     answer = result.stdout.strip().lower()
     if not result.ok:
         state = "unknown"

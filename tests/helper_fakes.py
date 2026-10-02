@@ -34,7 +34,7 @@ class FakeRunner:
 def show(unit: str, *, load="loaded", active="active", enabled="enabled", user=False):
     """The argv and answer of the `systemctl show` read for ``unit``."""
     argv = (
-        "systemctl",
+        "/usr/bin/systemctl",
         *(("--user",) if user else ()),
         "show",
         "--no-pager",

@@ -97,6 +97,10 @@ def _entry_from(row: object, notes: list[str]) -> DeviceEntry | None:
 def _from_engine(notes: list[str]) -> dict[str, DeviceEntry] | None:
     """The same list, built from the engine's catalog. ``None`` when the
     engine is not importable or its catalog cannot be found."""
+    from hammunition_devctl import devctl
+
+    if not devctl.engine_importable_as_root():
+        return None
     try:
         from hammunition.cli.main import find_catalog  # type: ignore[import-not-found,unused-ignore]
         from hammunition.manifest.load import load_hardware  # type: ignore[import-not-found,unused-ignore]
@@ -104,7 +108,10 @@ def _from_engine(notes: list[str]) -> dict[str, DeviceEntry] | None:
         return None
     try:
         classes, devices = load_hardware(find_catalog(None) / "hardware")
-    except Exception as exc:  # the engine's own errors, whatever they are
+    except (Exception, SystemExit) as exc:
+        # The engine's own errors, whatever they are -- including the SystemExit
+        # `find_catalog` raises when there is no checkout beside an installed
+        # wheel, which is not an Exception and would end this process.
         notes.append(f"the engine's catalog could not be read: {exc}")
         return None
     found: dict[str, DeviceEntry] = {}

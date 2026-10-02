@@ -367,7 +367,7 @@ def test_state_still_prints_json_when_the_kept_file_is_foreign(
     assert "line 1" in err
 
 
-def test_park_until_reboot_plans_no_kept_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_park_until_reboot_plans_no_kept_entry(as_root: None, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[object] = []
     monkeypatch.setattr(
         "hammunition_devctl.devctl._survey", lambda: ([_parkable("gps-receiver", "3-5.1")], [])
@@ -379,7 +379,7 @@ def test_park_until_reboot_plans_no_kept_entry(monkeypatch: pytest.MonkeyPatch) 
     assert seen[1].keep is not None  # type: ignore[attr-defined]
 
 
-def test_wake_forgets_a_kept_device_that_is_not_attached(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_wake_forgets_a_kept_device_that_is_not_attached(as_root: None, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[object] = []
     monkeypatch.setattr("hammunition_devctl.devctl._survey", lambda: ([], []))
     monkeypatch.setattr("hammunition_devctl.devctl.read_kept", lambda: [GPS_KEPT])
@@ -503,7 +503,7 @@ def test_time_state_prints_one_json_object(
     assert seen == ["awake"]
 
 
-def test_time_verbs_say_so_when_the_engine_is_not_installed(
+def test_time_verbs_say_so_when_the_engine_is_not_installed(as_root: None, 
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The helper is the tray's; the clock is the engine's (D-058). Without the
@@ -533,7 +533,7 @@ def test_time_needs_a_verb() -> None:
     assert caught.value.code == 2
 
 
-def test_time_mode_applies_the_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_time_mode_applies_the_mode(as_root: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from hammunition_devctl import devctl
 
     applied: list[str] = []
@@ -547,7 +547,7 @@ def test_time_mode_applies_the_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     assert applied == ["gps-only"]
 
 
-def test_time_mode_refusal_is_exit_2(
+def test_time_mode_refusal_is_exit_2(as_root: None, 
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from hammunition_devctl import devctl
@@ -560,7 +560,7 @@ def test_time_mode_refusal_is_exit_2(
     assert "error: ntpsec is not installed" in capsys.readouterr().err
 
 
-def test_time_mode_problems_are_exit_1(
+def test_time_mode_problems_are_exit_1(as_root: None, 
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from hammunition_devctl import devctl
@@ -589,7 +589,7 @@ def test_caller_uid_prefers_pkexec_then_sudo_then_self(monkeypatch: pytest.Monke
     assert caller_uid() == os.getuid()
 
 
-def test_linger_handler_uses_the_plan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_linger_handler_uses_the_plan(as_root: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """`linger on` when it is off runs loginctl enable-linger for the caller's
     own account and writes an ours=True record — without touching real systemd."""
     import hammunition_devctl.devctl as devctl
@@ -611,6 +611,6 @@ def test_linger_handler_uses_the_plan(monkeypatch: pytest.MonkeyPatch, tmp_path:
     set_runner(fake_run)  # the autouse fixture in conftest.py restores it
     rc = devctl.main(["linger", "on"])
     assert rc == 0
-    assert any(a[:2] == ("loginctl", "enable-linger") for a in ran)
+    assert any(a[:2] == ("/usr/bin/loginctl", "enable-linger") for a in ran)
     back = linger_mod.read_record(path=record)
     assert back is not None and back.enabled_by_us is True

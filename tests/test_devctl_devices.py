@@ -199,55 +199,85 @@ def test_a_fallback_is_a_note_on_stderr_and_the_plain_state_is_still_an_array(
 # --- the trust check a root process applies ---------------------------------
 
 
-def _as_root(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(os, "geteuid", lambda: 0)
+def _st(mode: int, uid: int = 0) -> os.stat_result:
+    return os.stat_result((mode, 0, 0, 1, uid, 0, 0, 0, 0, 0))
 
 
-def test_root_refuses_a_file_it_does_not_own(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+FILE_OK = _st(stat.S_IFREG | 0o644)
+DIR_OK = _st(stat.S_IFDIR | 0o755)
+
+
+def test_a_root_owned_file_in_a_root_owned_directory_is_trusted() -> None:
+    assert datafiles.untrusted_reason(FILE_OK, DIR_OK) is None
+
+
+@pytest.mark.parametrize(
+    ("info", "parent", "why"),
+    [
+        (_st(stat.S_IFREG | 0o644, uid=1000), DIR_OK, "not owned by root"),
+        (_st(stat.S_IFREG | 0o664), DIR_OK, "writable by group or other"),
+        (_st(stat.S_IFREG | 0o646), DIR_OK, "writable by group or other"),
+        (_st(stat.S_IFLNK | 0o777), DIR_OK, "not a regular file"),
+        (_st(stat.S_IFDIR | 0o755), DIR_OK, "not a regular file"),
+        (FILE_OK, _st(stat.S_IFDIR | 0o755, uid=1000), "directory that is not owned by root"),
+        (FILE_OK, _st(stat.S_IFDIR | 0o775), "directory writable by group or other"),
+        (FILE_OK, _st(stat.S_IFDIR | 0o757), "directory writable by group or other"),
+    ],
+)
+def test_root_refuses_what_anyone_else_could_have_written(
+    info: os.stat_result, parent: os.stat_result, why: str
 ) -> None:
-    path = tmp_path / "f.yaml"
-    path.write_text("version: 1\n")
-    _as_root(monkeypatch)
-    notes: list[str] = []
-    assert datafiles.load_yaml(path, notes) is None  # owned by the test's user, not root
-    assert notes and "not owned by root" in notes[0]
+    """Pure over stat results, so it says the same on a laptop, in CI and
+    under a real root."""
+    reason = datafiles.untrusted_reason(info, parent)
+    assert reason is not None and why in reason
 
 
-def test_root_refuses_a_group_or_other_writable_file_even_when_root_owned(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    path = tmp_path / "f.yaml"
-    path.write_text("version: 1\n")
-    for mode in (0o664, 0o646):
-        fake = os.stat_result((stat.S_IFREG | mode, 0, 0, 1, 0, 0, 0, 0, 0, 0))
-        monkeypatch.setattr(Path, "lstat", lambda self, fake=fake: fake)
-        _as_root(monkeypatch)
-        notes: list[str] = []
-        assert datafiles.load_yaml(path, notes) is None
-        assert "writable by group or other" in notes[0]
-
-
-def test_root_refuses_a_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_root_never_follows_a_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "t.yaml"
     target.write_text("version: 1\n")
     link = tmp_path / "l.yaml"
     link.symlink_to(target)
-    _as_root(monkeypatch)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
     notes: list[str] = []
     assert datafiles.load_yaml(link, notes) is None
-    assert "regular file" in notes[0]
+    assert notes and "not reading it as root" in notes[0]
 
 
-def test_root_reads_a_root_owned_file_nobody_else_can_write(
+def test_root_reads_the_file_it_opened_not_the_path_it_checked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The checks are on the descriptor: whatever the path points at *after*
+    the open is not what is read."""
     path = tmp_path / "f.yaml"
-    path.write_text("version: 1\nx: 1\n")
-    fake = os.stat_result((stat.S_IFREG | 0o644, 0, 0, 1, 0, 0, 0, 0, 0, 0))
-    monkeypatch.setattr(Path, "lstat", lambda self: fake)
-    _as_root(monkeypatch)
-    assert datafiles.load_yaml(path, []) == {"version": 1, "x": 1}
+    path.write_text("version: 1\nwho: first\n")
+    seen: list[os.stat_result] = []
+
+    def spy(info: os.stat_result, parent: os.stat_result) -> None:
+        seen.append(info)
+        path.unlink()  # swap the path out from under the check
+        path.write_text("version: 1\nwho: second\n")
+        return None
+
+    monkeypatch.setattr(datafiles, "untrusted_reason", spy)
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    assert datafiles.load_yaml(path, []) == {"version": 1, "who": "first"}
+    assert seen
+
+
+def test_root_refuses_a_file_it_does_not_own_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real checks, on a real file made by whoever runs the suite. Skipped
+    only under a real root, where the file *is* root's and is trusted."""
+    if os.getuid() == 0:
+        pytest.skip("running as root: the file would be root-owned and trusted")
+    path = tmp_path / "f.yaml"
+    path.write_text("version: 1\n")
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    notes: list[str] = []
+    assert datafiles.load_yaml(path, notes) is None
+    assert "not owned by root" in notes[0]
 
 
 def test_the_user_file_follows_xdg_config_home_then_home(tmp_path: Path) -> None:

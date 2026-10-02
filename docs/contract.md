@@ -48,7 +48,7 @@ exit 2 and an argparse "invalid choice" on stderr and nothing on stdout.
 |---|---|
 | 0 | done, and for a change the effect was read back and matches |
 | 1 | the change was attempted and failed or could not be verified; the reason is on stderr, lines starting `unverified:` or `error:` |
-| 2 | refused before anything happened: unknown or ambiguous name, a name not in an allow-list, wrong scope, the engine not installed, a verb that needs root run without it; the reason is on stderr, `error: ...` |
+| 2 | refused before anything happened: unknown or ambiguous name, a name not in an allow-list, wrong scope, the engine not installed, a verb that needs root (`park`, `wake`, `linger`, `time mode`, a system-scope `services` change) run without it; the reason is on stderr, `error: ...` |
 | 126, 127 | not the helper: pkexec's own (dismissed or refused prompt, no authentication agent). Front ends already treat both as "nothing was written" |
 
 stdout is empty on exit 1 and 2 except where a verb's section says
@@ -134,7 +134,11 @@ prints one JSON object with the 13 keys `mode`, `mode_set`, `daemon`, `gps`,
 `rtc`, `grants`, `dhcp_config`, `problems` (the engine's D-058 document).
 **These two verbs are the engine's**: the helper delegates to
 `hammunition.gpstime` when it can import it and otherwise exits 2 with
-`error: the Hammunition engine is not installed ...`. A front end already
+`error: the Hammunition engine is not installed ...`. As root it imports the
+engine only from a tree no account but its owner can write (the same D-056
+rule the helper's own package gets: refused when group- or other-writable,
+a `warning:` when one non-root account owns it); a refused import answers
+the same exit 2. A front end already
 treats exit 2 from `time state` as "update or install Hammunition". Whether
 the engine is importable depends on the interpreter the wrapper runs
 (`install.sh --interpreter`).
@@ -181,8 +185,10 @@ Argv `services state`. No pkexec. stdout, one document:
 
 Argv `services VERB NAME`, `VERB` one of `start`, `stop`, `enable`,
 `disable`. `NAME` is a row's `name`. For a user-scope name the helper runs
-`systemctl --user VERB UNIT` as the caller; for a system-scope name it runs
-`systemctl VERB UNIT` and must be running as root (through pkexec).
+`/usr/bin/systemctl --user VERB UNIT` as the caller; for a system-scope name
+it runs `/usr/bin/systemctl VERB UNIT` and must be running as root (through
+pkexec). `systemctl` and `loginctl` are always started by absolute path:
+nothing found through a `PATH` is run with root's authority.
 
 - `NAME` that is in neither allow-list file: exit 2, `error: 'NAME' is not a
   service Hammunition controls`.
@@ -243,10 +249,11 @@ devices came from); a file that cannot be parsed is reported on stderr as a
 `note:` and treated as empty, never half-read.
 
 **Root-read files must be trusted.** When the helper runs as root it reads
-the two `/etc/hammunition/` files only after checking that each is a regular
-file owned by root and not writable by group or other; one that is not is
-refused with a `note:` and treated as empty. The user file is never read by
-a root process.
+the two `/etc/hammunition/` files (and `/etc/hammunition/linger.yaml`) only
+after checking, on the open file, that each is a regular file owned by root
+and not writable by group or other, in a directory that is the same; a
+symlink is never followed. One that fails is refused with a `note:` and
+treated as empty. The user file is never read by a root process.
 
 ### `/etc/hammunition/devctl-services.yaml` (system scope)
 

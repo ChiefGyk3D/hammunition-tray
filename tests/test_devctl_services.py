@@ -30,15 +30,12 @@ def files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
 
 
 def _as_root(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Run as root without being root: the euid, the file-trust check that a
-    root process applies (the test files belong to the test's own user), and
-    the writability gate on the interpreter and package, which measures the
-    machine running the suite (a venv under a group-writable home) and is
-    tested on its own in test_devctl.py."""
+    """The ``as_root`` fixture of conftest.py, for tests that take only
+    ``monkeypatch``."""
     from hammunition_devctl import devctl
 
     monkeypatch.setattr(os, "geteuid", lambda: 0)
-    monkeypatch.setattr(datafiles, "_untrusted_for_root", lambda path: None)
+    monkeypatch.setattr(datafiles, "untrusted_reason", lambda info, parent: None)
     monkeypatch.setattr(devctl, "_refuse_or_warn_if_unsafe", lambda: None)
 
 
@@ -46,7 +43,7 @@ def _linger(state: str = "no") -> dict[tuple[str, ...], Result]:
     import pwd
 
     name = pwd.getpwuid(os.getuid()).pw_name
-    return {("loginctl", "show-user", name, "--property=Linger", "--value"): Result(0, state + "\n")}
+    return {("/usr/bin/loginctl", "show-user", name, "--property=Linger", "--value"): Result(0, state + "\n")}
 
 
 def test_state_lists_system_then_user_rows_with_every_key(
@@ -143,7 +140,7 @@ def test_linger_is_unknown_when_logind_cannot_say(
     name = pwd.getpwuid(os.getuid()).pw_name
     set_runner(
         FakeRunner(
-            {("loginctl", "show-user", name, "--property=Linger", "--value"): Result(1, "", "no")}
+            {("/usr/bin/loginctl", "show-user", name, "--property=Linger", "--value"): Result(1, "", "no")}
         )
     )
     main(["services", "state"])
@@ -235,12 +232,12 @@ def test_a_user_verb_runs_systemctl_user_with_the_unit_from_the_row(
     runner = FakeRunner(
         {
             before[0]: [before[1], after[1]],
-            ("systemctl", "--user", "start", "hammunition-gps-tether.service"): Result(0),
+            ("/usr/bin/systemctl", "--user", "start", "hammunition-gps-tether.service"): Result(0),
         }
     )
     set_runner(runner)
     assert main(["services", "start", "gps-tether"]) == 0
-    assert ("systemctl", "--user", "start", "hammunition-gps-tether.service") in runner.calls
+    assert ("/usr/bin/systemctl", "--user", "start", "hammunition-gps-tether.service") in runner.calls
     assert capsys.readouterr().out == ""
 
 
@@ -266,7 +263,7 @@ def test_each_verb_is_its_own_systemctl_word_and_is_read_back(
     pre = show("ntpsec.service", **before_state)
     post = show("ntpsec.service", **after_state)
     runner = FakeRunner(
-        {pre[0]: [pre[1], post[1]], ("systemctl", verb, "ntpsec.service"): Result(0)}
+        {pre[0]: [pre[1], post[1]], ("/usr/bin/systemctl", verb, "ntpsec.service"): Result(0)}
     )
     set_runner(runner)
     assert main(["services", verb, "time"]) == 0
@@ -282,7 +279,7 @@ def test_a_change_that_does_not_read_back_is_exit_1(
     still_off = show("ntpsec.service", active="inactive")
     set_runner(
         FakeRunner(
-            {still_off[0]: still_off[1], ("systemctl", "start", "ntpsec.service"): Result(0)}
+            {still_off[0]: still_off[1], ("/usr/bin/systemctl", "start", "ntpsec.service"): Result(0)}
         )
     )
     assert main(["services", "start", "time"]) == 1
@@ -300,7 +297,7 @@ def test_a_failing_systemctl_is_exit_1_with_its_reason(
         FakeRunner(
             {
                 off[0]: off[1],
-                ("systemctl", "start", "ntpsec.service"): Result(1, "", "Job failed"),
+                ("/usr/bin/systemctl", "start", "ntpsec.service"): Result(1, "", "Job failed"),
             }
         )
     )
@@ -391,7 +388,7 @@ def test_no_unit_ever_reaches_a_command_from_argv(
     runner = FakeRunner(
         {
             pre[0]: [pre[1], post[1]],
-            ("systemctl", "--user", "start", "hammunition-x.service"): Result(0),
+            ("/usr/bin/systemctl", "--user", "start", "hammunition-x.service"): Result(0),
         }
     )
     set_runner(runner)

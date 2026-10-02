@@ -16,11 +16,13 @@ root write is the record, through the D-058 atomic writer.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
+from hammunition_devctl.datafiles import read_text_as_root
 from hammunition_devctl.rootfiles import atomic_write
 
 __all__ = [
@@ -35,6 +37,10 @@ __all__ = [
 ]
 
 LINGER_RECORD = Path("/etc/hammunition/linger.yaml")
+
+LOGINCTL = "/usr/bin/loginctl"
+"""By absolute path: this command runs as root, and nothing found through a
+PATH is ever started with root's authority."""
 
 
 @dataclass(frozen=True)
@@ -60,11 +66,11 @@ class LingerPlan:
 
 
 def enable_command(username: str) -> tuple[str, ...]:
-    return ("loginctl", "enable-linger", username)
+    return (LOGINCTL, "enable-linger", username)
 
 
 def disable_command(username: str) -> tuple[str, ...]:
-    return ("loginctl", "disable-linger", username)
+    return (LOGINCTL, "disable-linger", username)
 
 
 def plan_linger(
@@ -118,15 +124,40 @@ def plan_linger(
     )
 
 
-def read_record(path: Path | None = None) -> LingerRecord | None:
+def read_record(path: Path | None = None, notes: list[str] | None = None) -> LingerRecord | None:
+    """The record, or None when absent -- or unusable, which is said in ``notes``.
+
+    A record that cannot be read must never stop a reading verb from printing
+    its one JSON document, so every way it can be wrong is "absent, with a
+    note". Under root it is read only when it is the root-owned file the
+    helper wrote (the same rule as the data files).
+    """
     path = path or LINGER_RECORD
+    sink = notes if notes is not None else []
+    if os.geteuid() == 0:
+        text = read_text_as_root(path, sink)
+        if text is None:
+            return None
+    else:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return None
+        except (OSError, UnicodeDecodeError) as exc:
+            sink.append(f"{path} is unreadable: {exc}")
+            return None
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        sink.append(f"{path} is not valid YAML")
         return None
     if not isinstance(data, dict) or "uid" not in data:
         return None
-    return LingerRecord(uid=int(data["uid"]), enabled_by_us=bool(data.get("enabled_by_us", False)))
+    try:
+        return LingerRecord(uid=int(data["uid"]), enabled_by_us=bool(data.get("enabled_by_us", False)))
+    except (TypeError, ValueError):
+        sink.append(f"{path} has a uid that is not a number")
+        return None
 
 
 def write_record(record: LingerRecord, path: Path | None = None) -> None:
