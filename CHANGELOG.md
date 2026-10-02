@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Clarify service status folding and start/stop/enable/disable read-back.
+
 ## [0.5.0] - 2026-10-02
 
 Two changes: the device helper moves into this repository, and both front
