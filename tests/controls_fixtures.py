@@ -178,6 +178,10 @@ SERVICES_POLLS = {
     "version-0": (0, json.dumps(services_doc(version=0)), ""),
     "no-version": (0, json.dumps({"kind": "services", "services": []}), ""),
     "newer-version": (0, json.dumps(SERVICES["newer-version"]), ""),
+    # JSON has one number type: 1.0 is version 1 in both languages.
+    "version-float": (0, json.dumps(SERVICES_D2).replace('"version": 1,', '"version": 1.0,', 1), ""),
+    "version-string": (0, json.dumps(services_doc(version="1")), ""),
+    "nan": (0, '{"kind": "services", "version": NaN, "services": []}', ""),
 }
 
 RADIOS_POLLS = {
@@ -195,4 +199,6 @@ RADIOS_POLLS = {
     "row-without-name": (0, json.dumps(radios_doc({"present": True})), ""),
     "version-0": (0, json.dumps(radios_doc(version=0)), ""),
     "newer-version": (0, json.dumps(RADIOS["newer-version"]), ""),
+    "version-float": (0, json.dumps(RADIOS_D2).replace('"version": 1,', '"version": 1.0,', 1), ""),
+    "nan": (0, '{"kind": "radios", "version": Infinity, "radios": []}', ""),
 }

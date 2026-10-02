@@ -153,6 +153,10 @@ the verb fails, the switch goes back and the helper's one line is shown
 (`error: ...` or `unverified: ...`); a dismissed or refused password prompt
 goes back silently, since nothing was written. While a verb runs, every
 switch is disabled.
+A poll that was already running when you used a switch is a picture from
+before it, so it never takes your request off the screen; the poll that
+confirms is the next one that starts after the verb has finished, which the
+tray asks for at once rather than at the next tick.
 
 **A helper without these verbs.** The group says one line, *update
 hammunition-tray*, instead of an error; the poll keeps asking, so updating

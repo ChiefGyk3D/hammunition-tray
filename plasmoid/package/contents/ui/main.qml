@@ -86,6 +86,13 @@ PlasmoidItem {
     property var pending: ({})
     property var inflight: []
 
+    // Counts verb boundaries: one when a service or radio verb begins and one
+    // when it ends. A services or radios poll records it when it starts, and
+    // only one that started after the last verb ended may drop `pending`
+    // (Controls.pendingFresh); an earlier one is a picture from before it.
+    property int epoch: 0
+    property var pollEpoch: ({})
+
     // The rows as they should be drawn: the helper's, with the pending
     // requests applied.
     readonly property var effectiveServices: servicesRows === null ? null : Controls.effectiveServices(servicesRows, pending)
@@ -150,8 +157,16 @@ PlasmoidItem {
     function refresh() {
         exec.run(helper + " state");
         exec.run(helper + " time state");
-        exec.run(helper + " services state");
-        exec.run(helper + " radio state");
+        startPoll("services", helper + " services state");
+        startPoll("radios", helper + " radio state");
+    }
+
+    // The epoch a services or radios poll started in, unless one is already
+    // running (connecting a command that is still running does nothing, so
+    // that one is the poll whose answer will come).
+    function startPoll(kind, command) {
+        if (!pollEpoch.hasOwnProperty(kind)) pollEpoch[kind] = epoch;
+        exec.run(command);
     }
 
     // NAME@ADDRESS, always. Two receivers of one class share a catalog name
@@ -197,6 +212,7 @@ PlasmoidItem {
     // [key, value] the request expects. The intent shows at once.
     function runControl(words, pend) {
         acting = true;
+        epoch += 1;
         lastError = "";
         actionError = "";
         const next = {};
@@ -241,10 +257,9 @@ PlasmoidItem {
         pending = next;
     }
 
-    // A poll that lands while a verb is running is a picture from before it:
-    // it must not take the operator's request off the screen.
+    // Called only for a poll Controls.pendingFresh accepts: one that started
+    // after the last verb ended.
     function dropPending(prefix) {
-        if (acting) return;
         const next = {};
         for (const k in pending) if (k.indexOf(prefix) !== 0) next[k] = pending[k];
         pending = next;
@@ -286,6 +301,17 @@ PlasmoidItem {
         if (kind === "services" || kind === "radios") {
             const out = Controls.pollOutcome(kind, code, stdout, stderr, root.tr);
             const isServices = kind === "services";
+            const started = pollEpoch.hasOwnProperty(kind) ? pollEpoch[kind] : null;
+            delete pollEpoch[kind];
+            // A poll that was running before a verb began, or lands while one
+            // runs, must not take the request off the screen. Any poll that
+            // started after the last verb ended is the truth, a failed one
+            // included.
+            if (Controls.pendingFresh(started, epoch, acting)) dropPending(isServices ? "service:" : "radio:");
+            // It began before a verb ended: ask again, so the confirmation
+            // does not wait for the next tick.
+            if (started !== null && started !== epoch)
+                startPoll(kind, helper + (isServices ? " services state" : " radio state"));
             if (out.keep) {
                 if (isServices) servicesError = out.error; else radiosError = out.error;
                 return;
@@ -295,7 +321,6 @@ PlasmoidItem {
                 if (isServices) servicesError = ""; else radiosError = "";
                 return;
             }
-            dropPending(isServices ? "service:" : "radio:");
             if (isServices) {
                 servicesRows = out.doc === null ? null : out.doc.rows;
                 servicesUnsupported = out.unsupported;
@@ -313,6 +338,7 @@ PlasmoidItem {
             // failure is the helper's own one line, and takes the request
             // back off the screen.
             acting = false;
+            epoch += 1;
             actionError = Controls.directError(code, stderr, root.tr);
             if (code !== 0) dropInflight();
             inflight = [];
@@ -360,6 +386,7 @@ PlasmoidItem {
         // A system-scope service verb is an action too: whatever did not
         // succeed, a dismissed prompt included, takes its request back.
         if (inflight.length > 0) {
+            epoch += 1;
             if (code !== 0) dropInflight();
             inflight = [];
         }

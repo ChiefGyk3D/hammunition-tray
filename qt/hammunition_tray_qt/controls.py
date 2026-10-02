@@ -125,9 +125,14 @@ def _text(row: dict[str, object], key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _no_constant(name: str) -> object:
+    # Python reads NaN and Infinity where JSON, and JavaScript's parser, do not.
+    raise ValueError(f"{name} is not JSON")
+
+
 def _document(stdout: str, kind: str) -> dict[str, object]:
     try:
-        doc = json.loads(stdout)
+        doc = json.loads(stdout, parse_constant=_no_constant)
     except ValueError as exc:
         raise ControlsError(str(exc)) from exc
     if not isinstance(doc, dict) or doc.get("kind") != kind:
@@ -137,9 +142,10 @@ def _document(stdout: str, kind: str) -> dict[str, object]:
 
 def _version(doc: dict[str, object]) -> int:
     v = doc.get("version")
-    if isinstance(v, bool) or not isinstance(v, int):
+    # JSON has one number type: 1.0 is version 1, as JavaScript reads it.
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or int(v) != v:
         return 0
-    return v
+    return int(v)
 
 
 def parse_services(stdout: str) -> ServicesDoc:
@@ -240,7 +246,7 @@ def poll_outcome(
         else:
             doc = parse_radios(stdout.strip())
         # Parsed once already, so this cannot fail.
-        version = _version(json.loads(stdout.strip()))
+        version = _version(json.loads(stdout.strip(), parse_constant=_no_constant))
     except ControlsError:
         # A document with no version cannot say it speaks this contract, but
         # an unreadable one is a parse error before it is anything else.
@@ -358,7 +364,8 @@ def direct_error(started: bool, crashed: bool, code: int, stderr: str) -> str:
         return HELPER_RUN_ERROR
     if code == 0:
         return ""
-    for line in stderr.splitlines():
+    # Split on newline only, as controlslogic.js does.
+    for line in stderr.split("\n"):
         if line.strip():
             return line.strip()
     return f"Action failed (exit {code})"
@@ -383,6 +390,15 @@ def service_pending(verb: str, name: str) -> tuple[str, str]:
 
 def radio_pending(name: str, on: bool) -> tuple[str, bool]:
     return f"radio:{name}:enabled", on
+
+
+def pending_fresh(started_epoch: int | None, epoch: int, acting: bool) -> bool:
+    """May a poll that has just landed end the operator's pending requests?
+    Only one that started after the last verb finished: one that was already
+    running when a verb began describes a world from before it, and one that
+    lands while a verb is running has not seen its effect. ``None`` is a
+    caller with no epoch to give, which is "now"."""
+    return not acting and (started_epoch is None or started_epoch == epoch)
 
 
 def effective_services(rows: tuple[ServiceRow, ...], pending: Pending) -> tuple[ServiceRow, ...]:

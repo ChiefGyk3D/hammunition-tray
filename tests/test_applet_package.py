@@ -435,9 +435,25 @@ class Controls(unittest.TestCase):
         action = main[main.index("if (inflight.length > 0)") :]
         self.assertIn("dropInflight()", action[:200])
 
-    def test_a_poll_mid_verb_does_not_take_the_request_off_the_screen(self):
-        body = re.search(r"function dropPending\([^)]*\)\s*\{(.*?)\n    \}", self.main(), re.S).group(1)
-        self.assertIn("if (acting) return;", body)
+    def test_a_poll_only_drops_the_request_when_it_started_after_the_last_verb_ended(self):
+        main = self.main()
+        branch = main[main.index('if (kind === "services" || kind === "radios")') : main.index('if (kind === "control")')]
+        self.assertIn("Controls.pendingFresh(started, epoch, acting)", branch)
+        # The decision comes before either early return, so a failed poll
+        # and a missing helper are covered too.
+        self.assertLess(branch.index("pendingFresh"), branch.index("if (out.keep)"))
+        # A poll that began before a verb ended is followed by another.
+        self.assertIn("started !== epoch", branch)
+        # The epoch moves when a verb begins and when it ends, either way.
+        run = re.search(r"function runControl\([^)]*\)\s*\{(.*?)\n    \}", main, re.S).group(1)
+        self.assertIn("epoch += 1", run)
+        self.assertEqual(main.count("epoch += 1"), 3)
+        # The epoch a poll started in is recorded once, not overwritten by a
+        # second request while the first is still running.
+        start = re.search(r"function startPoll\([^)]*\)\s*\{(.*?)\n    \}", main, re.S).group(1)
+        self.assertIn("hasOwnProperty(kind)", start)
+        body = re.search(r"function dropPending\([^)]*\)\s*\{(.*?)\n    \}", main, re.S).group(1)
+        self.assertNotIn("if (acting) return;", body)
 
     def test_the_library_is_imported_where_it_is_used(self):
         for text in (self.main(), self.full()):

@@ -393,6 +393,17 @@ class Transitions(unittest.TestCase):
         self.assertEqual(confirmed.pending, ())
         self.assertFalse(self.run_entry(confirmed, "service-run").checked)
 
+    def test_a_version_of_one_point_zero_is_version_one(self):
+        out = controls.poll_outcome("services", True, False, *SERVICES_POLLS["version-float"])
+        self.assertIsNotNone(out.doc)
+        self.assertIsNotNone(controls.poll_outcome("radios", True, False, *RADIOS_POLLS["version-float"]).doc)
+
+    def test_a_version_that_is_not_a_number_is_unsupported_and_nan_is_unreadable(self):
+        self.assertTrue(controls.poll_outcome("services", True, False, *SERVICES_POLLS["version-string"]).unsupported)
+        for kind, polls in (("services", SERVICES_POLLS), ("radios", RADIOS_POLLS)):
+            out = controls.poll_outcome(kind, True, False, *polls["nan"])
+            self.assertEqual((out.doc, out.keep), (None, True))
+
     def test_the_poll_is_the_truth_even_when_it_disagrees(self):
         # The verb "worked" but systemd says otherwise: the poll wins.
         s = with_services("running")
@@ -518,6 +529,73 @@ class Transitions(unittest.TestCase):
     def test_control_argv_refuses_an_entry_with_no_target(self):
         with self.assertRaises(ValueError):
             logic.control_argv(logic.MenuEntry("service-run", "x", verb="stop"))
+
+
+class StalePolls(unittest.TestCase):
+    """A poll that was already running when a verb began describes a world
+    from before it. It must not take the operator's request off the screen,
+    and the poll after the verb is the one that confirms it."""
+
+    def toggled(self):
+        s = with_services("running")
+        e = next(e for e in entries(s, "service-run"))
+        s = logic.begin_control(s, e)
+        return logic.apply_control(s, e, ok()), e
+
+    def test_a_verb_moves_the_epoch_twice_once_when_it_begins_and_once_when_it_ends(self):
+        s = with_services("running")
+        e = entries(s, "service-run")[0]
+        began = logic.begin_control(s, e)
+        self.assertEqual(began.epoch, s.epoch + 1)
+        self.assertEqual(logic.apply_control(began, e, ok()).epoch, s.epoch + 2)
+
+    def test_a_poll_that_started_before_the_verb_leaves_the_intent_on_screen(self):
+        s, _ = self.toggled()
+        stale = logic.apply_services_poll(s, ok(json.dumps(SERVICES["running"])), epoch=0)
+        self.assertFalse(entries(stale, "service-run")[0].checked)
+        self.assertNotEqual(stale.pending, ())
+
+    def test_a_poll_that_started_after_the_verb_ended_is_the_truth(self):
+        s, _ = self.toggled()
+        fresh = logic.apply_services_poll(s, ok(json.dumps(SERVICES["stopped"])), epoch=s.epoch)
+        self.assertEqual(fresh.pending, ())
+        self.assertFalse(entries(fresh, "service-run")[0].checked)
+
+    def test_a_poll_that_started_during_the_verb_does_not_end_it(self):
+        s = with_services("running")
+        e = entries(s, "service-run")[0]
+        s = logic.begin_control(s, e)
+        mid = logic.apply_services_poll(s, ok(json.dumps(SERVICES["running"])), epoch=s.epoch)
+        self.assertNotEqual(mid.pending, ())
+
+    def test_a_fresh_failed_poll_drops_a_confirmed_intent_it_cannot_confirm(self):
+        # A successful verb whose confirmation never arrives must not show
+        # the intent forever: the last rows the helper gave are the truth.
+        s, _ = self.toggled()
+        failed = logic.apply_services_poll(s, ok(code=1, stderr="error: boom\n"), epoch=s.epoch)
+        self.assertEqual(failed.pending, ())
+        self.assertEqual(failed.services_error, "error: boom")
+        self.assertTrue(entries(failed, "service-run")[0].checked)
+
+    def test_a_stale_failed_poll_changes_nothing_but_its_error(self):
+        s, _ = self.toggled()
+        failed = logic.apply_services_poll(s, ok(code=1, stderr="error: boom\n"), epoch=0)
+        self.assertNotEqual(failed.pending, ())
+
+    def test_the_radios_follow_the_same_rule(self):
+        s = with_radios("on")
+        e = entries(s, "radio")[0]
+        s = logic.apply_control(logic.begin_control(s, e), e, ok())
+        stale = logic.apply_radios_poll(s, ok(json.dumps(RADIOS["on"])), epoch=0)
+        self.assertFalse(entries(stale, "radio")[0].checked)
+        fresh = logic.apply_radios_poll(s, ok(json.dumps(RADIOS["off"])), epoch=s.epoch)
+        self.assertEqual(fresh.pending, ())
+
+    def test_pending_fresh_is_the_one_rule(self):
+        self.assertTrue(controls.pending_fresh(3, 3, False))
+        self.assertTrue(controls.pending_fresh(None, 3, False))
+        self.assertFalse(controls.pending_fresh(3, 3, True))
+        self.assertFalse(controls.pending_fresh(2, 3, False))
 
 
 class Group(unittest.TestCase):

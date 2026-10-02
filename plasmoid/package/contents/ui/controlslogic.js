@@ -239,6 +239,12 @@ function radioArgv(helper, row, on) {
 
 // The one line for a verb run without pkexec that did not succeed, or "".
 // The helper's first non-empty stderr line is its reason.
+// May a poll that has just landed end the operator's pending requests? Only
+// one that started after the last verb finished (see controls.py).
+function pendingFresh(startedEpoch, epoch, acting) {
+    return !acting && (startedEpoch === null || startedEpoch === epoch);
+}
+
 function directError(code, stderr, tr) {
     if (code === 0) return "";
     var lines = (stderr || "").split("\n");

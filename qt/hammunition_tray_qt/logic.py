@@ -119,6 +119,11 @@ class TrayState:
     # The keys the action in flight added, so a failure can take back
     # exactly those.
     inflight: tuple[str, ...] = ()
+    # Counts verb boundaries: one when a service or radio verb begins and one
+    # when it ends. A poll records it when it starts, and only one that
+    # started after the last verb ended may drop the pending requests
+    # (controls.pending_fresh); an earlier one is a picture from before it.
+    epoch: int = 0
 
 
 @dataclass(frozen=True)
@@ -221,32 +226,43 @@ def _drop(pending: controls.Pending, prefix: str) -> controls.Pending:
     return tuple(p for p in pending if not p[0].startswith(prefix))
 
 
-def apply_services_poll(state: TrayState, result: ProcResult) -> TrayState:
+def apply_services_poll(
+    state: TrayState, result: ProcResult, epoch: int | None = None
+) -> TrayState:
+    """``epoch`` is ``state.epoch`` as it was when this poll started."""
     out = controls.poll_outcome(
         "services", result.started, result.crashed, result.code, result.stdout, result.stderr
     )
-    return _apply_group(state, out, "service:")
+    return _apply_group(state, out, "service:", epoch)
 
 
-def apply_radios_poll(state: TrayState, result: ProcResult) -> TrayState:
+def apply_radios_poll(
+    state: TrayState, result: ProcResult, epoch: int | None = None
+) -> TrayState:
     out = controls.poll_outcome(
         "radios", result.started, result.crashed, result.code, result.stdout, result.stderr
     )
-    return _apply_group(state, out, "radio:")
+    return _apply_group(state, out, "radio:", epoch)
 
 
-def _apply_group(state: TrayState, out: controls.GroupOutcome, prefix: str) -> TrayState:
+def _apply_group(
+    state: TrayState, out: controls.GroupOutcome, prefix: str, epoch: int | None
+) -> TrayState:
     kind = "services" if prefix == "service:" else "radios"
     err = f"{kind}_error"
     unsupported = f"{kind}_unsupported"
+    # A poll that was running before a verb began, or lands while one runs,
+    # must not take the operator's request back off the screen; any poll
+    # that started after the last verb ended is the truth, a failed one
+    # included (the last rows the helper gave, not an intent nothing can
+    # confirm).
+    fresh = controls.pending_fresh(epoch, state.epoch, state.acting)
+    pending = _drop(state.pending, prefix) if fresh else state.pending
     if out.keep:
-        return replace(state, **{err: out.error})
-    # A poll that lands while a verb is still running is a picture from
-    # before it: it must not take the operator's request back off the screen.
-    pending = state.pending if state.acting else _drop(state.pending, prefix)
+        return replace(state, pending=pending, **{err: out.error})
     if out.doc is None and not out.unsupported:
         # No helper: the device poll says so, this group changes nothing.
-        return replace(state, **{err: ""})
+        return replace(state, pending=pending, **{err: ""})
     return replace(
         state,
         pending=pending,
@@ -264,7 +280,13 @@ def begin_control(state: TrayState, entry: "MenuEntry") -> TrayState:
         raise ValueError("this entry has nothing to run")
     pending = tuple(p for p in state.pending if p[0] != key) + ((key, value),)
     return replace(
-        state, acting=True, last_error="", action_error="", pending=pending, inflight=(key,)
+        state,
+        acting=True,
+        last_error="",
+        action_error="",
+        pending=pending,
+        inflight=(key,),
+        epoch=state.epoch + 1,
     )
 
 
@@ -283,7 +305,7 @@ def apply_control(
         new = replace(state, acting=False, action_error=error or state.action_error)
     if not result.started or result.crashed or result.code != 0:
         new = replace(new, pending=tuple(p for p in new.pending if p[0] not in state.inflight))
-    return replace(new, inflight=())
+    return replace(new, inflight=(), epoch=state.epoch + 1)
 
 
 def apply_time_poll(state: TrayState, result: ProcResult) -> TrayState:

@@ -382,6 +382,51 @@ class Smoke(unittest.TestCase):
         self.assertTrue(self.action(tray, "gpsd").isChecked())
         self.assertEqual(tray.state.action_error, "")
 
+    def test_a_poll_already_running_when_a_verb_ends_does_not_undo_it_and_is_followed_by_another(self):
+        from hammunition_tray_qt.logic import ProcResult
+
+        # A runner that holds the services poll back, so it can land late.
+        class Holding(FakeRunner):
+            held = None
+
+            def run(self, program, args, done, timeout_ms=None):
+                if args == ["services", "state"] and self.held is None and self.hold:
+                    self.calls.append((program, list(args)))
+                    self.held = done
+                    return
+                super().run(program, args, done, timeout_ms)
+
+        tray, _ = self.make([row()])
+        runner = Holding()
+        runner.hold = False
+        runner.answers["state"] = ProcResult(started=True, stdout=json.dumps([row()]))
+        runner.answers["services state"] = _doc_ok(SERVICES["running"])
+        tray.runner = runner
+        tray.refresh()
+        runner.hold = True
+        tray._services_polling = False
+        tray.refresh()  # the poll that will land late
+        stale = runner.held
+        self.assertIsNotNone(stale)
+        # The operator toggles while it is still running; the verb finishes.
+        runner.answers["services stop gps-tether"] = ProcResult(started=True)
+        self.action(tray, "gps-tether").trigger()
+        self.assertFalse(self.action(tray, "gps-tether").isChecked())
+        # Hold the next poll too, to look at the screen between the two.
+        runner.held = None
+        before = len([c for c in runner.calls if c[1] == ["services", "state"]])
+        stale(_doc_ok(SERVICES["running"]))
+        # The old picture landed and the intent is still on screen ...
+        self.assertFalse(self.action(tray, "gps-tether").isChecked())
+        self.assertNotEqual(tray.state.pending, ())
+        # ... and another poll was asked for, which is the one that confirms.
+        self.assertGreater(len([c for c in runner.calls if c[1] == ["services", "state"]]), before)
+        fresh = runner.held
+        self.assertIsNotNone(fresh)
+        fresh(_doc_ok(SERVICES["stopped"]))
+        self.assertEqual(tray.state.pending, ())
+        self.assertFalse(self.action(tray, "gps-tether").isChecked())
+
     def test_a_helper_without_the_verbs_says_update_once_per_group(self):
         tray, runner = self.make([row()])
         runner.answers["services state"] = _poll(SERVICES_POLLS["old-helper"])

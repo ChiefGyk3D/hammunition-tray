@@ -114,6 +114,8 @@ out.effectiveRadios = L.effectiveRadios(
 for (const [name, [code, stderr]] of Object.entries(input.errors)) {
   out.errors[name] = L.directError(code, stderr, tr);
 }
+out.fresh = {};
+for (const [s, e, a] of input.fresh) out.fresh[(s === null ? "None" : s) + "/" + e + "/" + (a ? "True" : "False")] = L.pendingFresh(s, e, a);
 for (const source of input.sources) out.kinds[source] = T.sourceKind(source);
 process.stdout.write(JSON.stringify(out));
 """
@@ -147,6 +149,8 @@ ERRORS = {
     "leading-blank": (1, "\n  error: boom  \n"),
     "silent": (3, ""),
     "refused": (2, "error: refusing\n"),
+    "crlf": (1, "\r\nerror: boom\r\n"),
+    "form-feed-is-not-a-line-break-here": (1, "first\x0csecond\n"),
     "not-found": (127, "sh: 1: /usr/local/libexec/hammunition-devctl: not found\n"),
 }
 
@@ -167,11 +171,24 @@ SOURCES = {
     f"{HELPER} services stop gps-tether": "control",
     f"{HELPER} services enable gps-tether": "control",
     f"{HELPER} radio off wwan": "control",
+    # A service is named by its owner: nothing in a name may change which
+    # parser reads the answer. These all end in or contain " state".
+    f"{HELPER} services start state": "control",
+    f"{HELPER} services stop state-sync": "control",
+    f"{HELPER} services enable time": "control",
+    f"{HELPER} services start services": "control",
+    f"{HELPER} services start radio": "control",
+    f"{HELPER} services start pkexec-helper": "control",
+    f"{PKEXEC} {HELPER} services start state": "action",
     f"{PKEXEC} {HELPER} services stop gpsd": "action",
     f"{PKEXEC} {HELPER} park gps-receiver@1-4": "action",
     f"{PKEXEC} {HELPER} wake gps-receiver@1-4": "action",
     f"{PKEXEC} {HELPER} time mode gps-only": "action",
 }
+
+
+FRESH = ((0, 0, False), (0, 1, False), (1, 1, False), (1, 1, True), (2, 1, False),
+         (None, 5, False), (None, 5, True))
 
 
 def as_js(obj):
@@ -191,6 +208,7 @@ class Parity(unittest.TestCase):
                 "pending": PENDING_CASES,
                 "errors": ERRORS,
                 "sources": list(SOURCES),
+                "fresh": [[None if s is None else s, e, a] for s, e, a in FRESH],
             }
         )
         p = subprocess.run(
@@ -328,6 +346,14 @@ class Parity(unittest.TestCase):
         # " services state" and " radio state" before " time state" and
         # " state": the order decides which parser reads which answer.
         self.assertEqual(self.js["kinds"], SOURCES)
+
+    def test_a_poll_is_fresh_only_when_it_started_after_the_last_verb_finished(self):
+        for started, epoch, acting in FRESH:
+            with self.subTest(started=started, epoch=epoch, acting=acting):
+                self.assertEqual(
+                    self.js["fresh"][f"{started}/{epoch}/{acting}"],
+                    controls.pending_fresh(started, epoch, acting),
+                )
 
     def test_main_qml_dispatches_through_source_kind_still(self):
         main = (UI / "main.qml").read_text()

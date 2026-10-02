@@ -23,6 +23,14 @@
 - **A switch moves at once**; the next poll confirms or contradicts it; a
   failed verb puts it back and shows the helper's one-line error, and a
   dismissed password prompt puts it back silently.
+- A poll that was already running when a verb began cannot undo the
+  switch: each poll records which verbs had finished when it started, and
+  only one that started after the last verb ended may drop the request. A
+  failed poll after a verb drops it too, so an intent nothing can confirm
+  is not shown for ever.
+- A user service named like a poll (`state`, `radio`, `pkexec-...`) cannot
+  be mistaken for one: the applet tells finished commands apart by their
+  shape, not by what they contain.
 - **Helper contract version 1** is the floor, recorded once
   (`CONTRACT_FLOOR`, in `controls.py` and `controlslogic.js`, held equal by
   test) and compared with each document's `version`.

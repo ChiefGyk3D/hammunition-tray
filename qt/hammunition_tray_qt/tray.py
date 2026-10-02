@@ -150,24 +150,42 @@ class Tray(QObject):
             return
         self._services_polling = True
         program, args = logic.services_poll_argv()
-        self.runner.run(program, args, self._services_polled, timeout_ms=POLL_TIMEOUT_MS)
+        started = self.state.epoch
+        self.runner.run(
+            program,
+            args,
+            lambda result: self._services_polled(result, started),
+            timeout_ms=POLL_TIMEOUT_MS,
+        )
 
-    def _services_polled(self, result: ProcResult) -> None:
+    def _services_polled(self, result: ProcResult, started: int) -> None:
         self._services_polling = False
-        self.state = logic.apply_services_poll(self.state, result)
+        self.state = logic.apply_services_poll(self.state, result, started)
         self._render()
+        if started != self.state.epoch:
+            # It began before a verb ended: ask again, so the confirmation
+            # does not wait for the next tick.
+            self._refresh_services()
 
     def _refresh_radios(self) -> None:
         if self._radios_polling:
             return
         self._radios_polling = True
         program, args = logic.radios_poll_argv()
-        self.runner.run(program, args, self._radios_polled, timeout_ms=POLL_TIMEOUT_MS)
+        started = self.state.epoch
+        self.runner.run(
+            program,
+            args,
+            lambda result: self._radios_polled(result, started),
+            timeout_ms=POLL_TIMEOUT_MS,
+        )
 
-    def _radios_polled(self, result: ProcResult) -> None:
+    def _radios_polled(self, result: ProcResult, started: int) -> None:
         self._radios_polling = False
-        self.state = logic.apply_radios_poll(self.state, result)
+        self.state = logic.apply_radios_poll(self.state, result, started)
         self._render()
+        if started != self.state.epoch:
+            self._refresh_radios()
 
     def _refresh_devices(self) -> None:
         if self._polling:
