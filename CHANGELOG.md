@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+- **The device helper moves here.** `hammunition-devctl`, the one root helper
+  every front end calls, comes from the Hammunition engine (its D-056) into
+  this repository as the package `devctl/hammunition_devctl`, with its tests.
+  `docs/contract.md` is its interface, versioned: `--version` prints
+  `hammunition-devctl contract 1`. The engine's verbs (`state`, `park`,
+  `wake`, `linger`, `time mode`, `time state`) keep their argv, exit codes
+  and JSON byte for byte, and a test pins that against the Qt tray's own argv.
+- **New verbs, contract 1.** `services state` and `services start|stop|enable|disable NAME`
+  (user scope as you, system scope through pkexec and the same polkit
+  action; a name outside the allow-list files is refused by name);
+  `radio state` and `radio on|off wwan|wifi|bluetooth` (`nmcli` and
+  `bluetoothctl`, no root, read back after the change); `state --with-source`
+  (says whether the device list came from `/etc/hammunition/devctl-devices.yaml`
+  or the engine's catalog).
+- The `time` verbs delegate to the engine's `hammunition.gpstime` when the
+  wrapper's interpreter can import it, and otherwise exit 2 saying the engine
+  is not installed (the tray already shows that as "update Hammunition").
+- Installing the helper: `install.sh` and `uninstall.sh` place and remove it
+  (a root-owned copy under `/usr/local/lib`, the wrapper polkit authorises
+  and the polkit action, with `sudo` asked once and only after the files are
+  listed; `--interpreter`, `--no-helper`, `--helper-only`, `--force-helper`),
+  and a third package, `hammunition-devctl`, joins the two `.deb`s. Both
+  front-end packages recommend it. A wrapper written by the engine's
+  `hardware apply` is never replaced or removed without `--force-helper`.
+- CI: the whole test directory runs under pytest; a new job tests the helper
+  on Python 3.11 and 3.13 from a real `pip install ./devctl`, with
+  `mypy --strict`; the release checks the third package on Parrot.
 ### 0.5.0 (the Controls panel)
 
 - **One "Controls" panel, three groups**, worded identically in the Plasma

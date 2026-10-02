@@ -96,3 +96,33 @@ class QtInTheWorkflows(unittest.TestCase):
         checks = build[build.index("name: checksums"):]
         self.assertIn("hammunition-tray_", checks)
         self.assertIn("hammunition-tray-qt_", checks)
+
+
+class HelperInTheRelease(unittest.TestCase):
+    """The helper is versioned, built, checked and installed with the tray."""
+
+    release = (ROOT / ".github/workflows/release.yml").read_text()
+    ci = (ROOT / ".github/workflows/ci.yml").read_text()
+
+    def test_the_helper_package_carries_the_trays_version(self):
+        import tomllib
+
+        meta = json.loads((ROOT / "plasmoid/package/metadata.json").read_text())
+        project = tomllib.loads((ROOT / "devctl/pyproject.toml").read_text())["project"]
+        self.assertEqual(project["version"], meta["KPlugin"]["Version"])
+        self.assertEqual(project["scripts"], {"hammunition-devctl": "hammunition_devctl.devctl:main"})
+
+    def test_ci_runs_the_helper_on_the_oldest_python_it_supports_and_type_checks_it(self):
+        self.assertIn('python: ["3.11", "3.13"]', self.ci)
+        self.assertIn("mypy --strict devctl/hammunition_devctl", self.ci)
+        self.assertIn("python -m pip install ./devctl", self.ci)
+
+    def test_ci_lints_the_maintainer_scripts(self):
+        self.assertIn("packaging/debian/devctl/postinst packaging/debian/devctl/prerm", self.ci)
+
+    def test_the_release_installs_the_helper_through_its_wrapper_and_removes_it(self):
+        build = self.release[self.release.index("\n  build:"):self.release.index("\n  release:")]
+        self.assertIn("apt-get install -y -qq /dist/hammunition-devctl_*_all.deb", build)
+        self.assertIn("hammunition-devctl contract 1", build)
+        self.assertIn("test ! -e /usr/local/libexec/hammunition-devctl", build)
+        self.assertIn("-eq 3", build)

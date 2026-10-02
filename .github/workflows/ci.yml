@@ -1,6 +1,6 @@
 # CI for the Hammunition Devices applet.
 #
-# Three jobs, each of which can actually fail. There is deliberately no
+# Four jobs, each of which can actually fail. There is deliberately no
 # qmllint job: the qmllint on the development machine is a Qt5 shim that
 # cannot exec and *exits 0 while failing*, so a job running it would pass
 # forever without checking anything. A check nobody can trust is worse than
@@ -34,10 +34,15 @@ jobs:
       # node runs the applet's timelogic.js against the Qt tray's
       # timelogic.py (tests/test_time_parity.py). The runner image ships
       # node; requiring it turns a missing one into a failure, not a skip.
+      # The helper's tests are pytest, and pytest also runs the older unittest
+      # files, so one runner covers the whole directory. PyYAML is the helper's
+      # one dependency.
+      - name: Install the test dependencies
+        run: python -m pip install pytest PyYAML
       - name: Static checks on the package, and the Time parity test
         env:
           HAMMUNITION_REQUIRE_NODE: "1"
-        run: node --version && python -m unittest discover -s tests -v
+        run: node --version && python -m pytest tests -v
 
   # The Qt tray against the archive's own PyQt6 and the system python3,
   # which is what the .deb depends on. HAMMUNITION_REQUIRE_PYQT6 turns the
@@ -49,13 +54,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install PyQt6 and desktop-file-utils from the archive
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-pyqt6 desktop-file-utils
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-pyqt6 desktop-file-utils python3-yaml python3-pytest
       - name: Every test, PyQt6 required
         env:
           HAMMUNITION_REQUIRE_PYQT6: "1"
           HAMMUNITION_REQUIRE_NODE: "1"
           QT_QPA_PLATFORM: offscreen
-        run: /usr/bin/python3 -m unittest discover -s tests -v
+        run: /usr/bin/python3 -m pytest tests -v
+
+  # The root helper on the oldest Python it supports and the newest, from a
+  # pip install of the package (so the console script is real), with the
+  # strict type check. The engine is not installed here: the helper must work
+  # without it, which is what its tests assert.
+  helper:
+    name: hammunition-devctl (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install the helper, and the test and type tools
+        run: python -m pip install ./devctl pytest mypy types-PyYAML
+      - name: The console script answers its contract number
+        run: test "$(hammunition-devctl --version)" = "hammunition-devctl contract 1"
+      - name: mypy --strict over the helper
+        run: python -m mypy --strict devctl/hammunition_devctl
+      - name: The helper's tests
+        run: python -m pytest tests/test_devctl.py tests/test_devctl_compat.py tests/test_devctl_devices.py tests/test_devctl_radio.py tests/test_devctl_services.py tests/test_linger.py tests/test_power_control.py tests/test_polkit_artifacts.py tests/test_helper_install.py -v
 
   shell:
     name: shellcheck
@@ -65,4 +95,4 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - name: Lint the installers and the package build
-        run: shellcheck install.sh uninstall.sh packaging/debian/build.sh
+        run: shellcheck install.sh uninstall.sh packaging/debian/build.sh packaging/debian/devctl/postinst packaging/debian/devctl/prerm

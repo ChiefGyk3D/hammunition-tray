@@ -1,0 +1,17 @@
+#!/bin/sh
+# hammunition-devctl: take the wrapper out again, if it is ours. Upgrades keep
+# it (the postinst of the new version rewrites it in place).
+set -e
+
+mark='# Installed by hammunition-tray (hammunition-devctl, D-056).'
+dest=/usr/local/libexec/hammunition-devctl
+
+case "$1" in
+    remove | deconfigure)
+        if [ -e "$dest" ] && grep -qxF "$mark" "$dest"; then
+            rm -f "$dest"
+        fi
+        ;;
+esac
+
+exit 0
