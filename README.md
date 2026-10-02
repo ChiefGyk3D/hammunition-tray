@@ -53,7 +53,7 @@ waking one does, and goes through polkit exactly once per action.
 Any of the three. Each needs the device helper, which this repository's
 installers place too (the `.deb` as its own package, `hammunition-devctl`).
 
-**Through Hammunition** (once its catalog carries the applet):
+**Through Hammunition** (both tray units are in its catalog at 0.5.0):
 
 ```sh
 hammunition install hammunition-tray
@@ -90,9 +90,11 @@ After any install or upgrade, Plasma keeps the old version loaded until you
 run `systemctl --user restart plasma-plasmashell` or log in again. Then add
 *Hammunition Devices* to your panel or system tray.
 
-Removing the applet does not remove the helper unless you say `--helper`,
-and a helper that Hammunition's `hardware apply` wrote is never removed by
-this repository's scripts: `hammunition hardware unapply` removes that one.
+Removing the applet does not remove the helper unless you say `--helper`.
+When `hammunition hardware unapply` finds a helper that answers
+`hammunition-devctl contract 1`, it leaves the helper and its polkit action
+alone, reports that the helper is now `hammunition-tray`'s, and leaves their
+removal to this repository's uninstall.
 
 ## The device helper, `hammunition-devctl`
 
@@ -195,12 +197,15 @@ is taller than the popup; the Qt tray's menu has a section heading per group.
 - **Devices**: exactly what is described above. Nothing about it changed.
 - **Services**: one row per service the helper controls, from
   `hammunition-devctl services state`: a **switch** for *running* and a
-  **"Start at login"** checkbox. The rows are the helper's allow-list
-  (`/etc/hammunition/devctl-services.yaml` for the system's,
-  `~/.config/hammunition/devctl-services.yaml` for your own), so what is
-  listed is whatever the engine registered: the GPS daemon, the clock, the
-  GPS tether, `rigctld`. A service whose unit is not installed is still
-  listed, says *not installed*, and cannot be switched. *Start at login* is
+  **"Start at login"** checkbox. The rows come from the helper's allow-lists
+  (`/etc/hammunition/devctl-services.yaml`, written by
+  `hammunition hardware apply`, for system services;
+  `~/.config/hammunition/devctl-services.yaml`, updated when a catalog unit
+  with a `user_services` block is installed, for your own), and the same list
+  is available as `hammunition services`: the GPS daemon, the clock,
+  `gps-resume`, the GPS tether and `rigctld`. A service whose unit is not
+  installed is still listed, says *not installed*, and cannot be switched.
+  *Start at login* is
   disabled for a unit that has nothing to enable (`static`).
 - **Radios**: one switch each for mobile broadband (WWAN), Wi-Fi and
   Bluetooth, from `hammunition-devctl radio state`. A radio whose tool the
@@ -305,8 +310,9 @@ It depends on `python3 (>= 3.11)`, `python3-pyqt6` and `pkexec` (or the
 older `policykit-1`); apt pulls them in. Measured with `apt-cache policy`
 on 2026-09-28: Debian 13 (as Parrot 7) offers `python3-pyqt6` 6.9.0 and
 `pkexec` 126, and has no `policykit-1` at all; Ubuntu 24.04 offers
-`python3-pyqt6` 6.6.1 and both names. As with the applet,
-`hammunition hardware apply` must have been run first.
+`python3-pyqt6` 6.6.1 and both names. The catalog units install the helper;
+`hammunition hardware apply` writes the device and system-service lists it
+reads.
 
 **It starts at login on every desktop except Plasma**, from
 `/etc/xdg/autostart/hammunition-tray-qt.desktop`, which carries
