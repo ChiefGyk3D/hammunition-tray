@@ -1,0 +1,17 @@
+#!/usr/bin/python3 -I
+# hammunition-devctl: the device helper of the Hammunition suite
+# Copyright (C) 2026 ChiefGyk3D
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The entry the wrapper at /usr/local/libexec/hammunition-devctl runs. It
+# puts its own directory (absolute, root-owned once installed) on the path and
+# nothing else: never the working directory, which `-I` already drops.
+import os
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from hammunition_devctl.devctl import main  # noqa: E402
+
+sys.exit(main())
