@@ -18,6 +18,7 @@ APPLET_FILES = {
     "contents/ui/CompactRepresentation.qml",
     "contents/ui/FullRepresentation.qml",
     "contents/ui/configGeneral.qml",
+    "contents/ui/controlslogic.js",
     "contents/ui/main.qml",
     "contents/ui/timelogic.js",
 }

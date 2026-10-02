@@ -142,7 +142,7 @@ def test_the_applet_names_only_verbs_the_helper_still_has() -> None:
     verbs = set(re.findall(r'helper \+ " ([a-z]+)', qml))
     verbs |= set(re.findall(r'\? "(park|wake) "', qml))
     assert {"state", "time", "park", "wake"} <= verbs
-    assert verbs <= {"state", "time", "park", "wake", "linger"}
+    assert verbs <= {"state", "time", "park", "wake", "linger", "services", "radio"}
 
 
 def test_version_prints_the_contract_number_and_the_contract_file_agrees(

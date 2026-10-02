@@ -328,7 +328,7 @@ class Time(unittest.TestCase):
     def test_the_time_poll_has_its_own_error(self):
         main = self.main()
         self.assertIn('property string timeError: ""', main)
-        branch = main[main.index('if (kind === "time")') : main.index('if (kind === "devices")')]
+        branch = main[main.index('if (kind === "time")') : main.index('if (kind === "services" ||')]
         self.assertIn("timeError = out.error", branch)
         self.assertNotIn("lastError", branch)
         self.assertNotIn("actionError", branch)
@@ -370,3 +370,141 @@ class Time(unittest.TestCase):
     def test_no_rtc_is_in_the_tooltip(self):
         tip = self.main()[self.main().index("toolTipSubText:"):]
         self.assertIn("TimeLogic.rtcNote(timeState, root.tr)", tip)
+
+
+class Controls(unittest.TestCase):
+    """The Controls panel (helper contract v1). The same two guarantees as
+    the switches: reading never prompts, and a system-scope change always
+    does. Its wording and rules are controlslogic.js, held to the Qt tray's
+    by test_controls_parity."""
+
+    def main(self):
+        return read(os.path.join(UI, "main.qml"))
+
+    def full(self):
+        return read(os.path.join(UI, "FullRepresentation.qml"))
+
+    def refresh(self):
+        found = re.search(r"function refresh\(\)\s*\{(.*?)\n    \}", self.main(), re.S)
+        self.assertIsNotNone(found, "refresh() is gone or was renamed")
+        return found.group(1)
+
+    def test_one_tick_asks_for_all_four_documents_and_never_through_pkexec(self):
+        body = self.refresh()
+        for verb in (" state", " time state", " services state", " radio state"):
+            self.assertIn(f'helper + "{verb}"', body)
+        self.assertNotIn("pkexec", body)
+
+    def test_a_system_service_goes_through_pkexec_by_its_path(self):
+        self.assertIn('Controls.serviceArgv("/usr/bin/pkexec", helper, row, verb)', self.main())
+
+    def test_a_radio_never_does(self):
+        found = re.search(r"function setRadio\([^)]*\)\s*\{(.*?)\n    \}", self.main(), re.S)
+        self.assertIsNotNone(found, "setRadio() is gone or was renamed")
+        self.assertNotIn("pkexec", found.group(1))
+        self.assertIn("Controls.radioArgv(helper, row, on)", found.group(1))
+
+    def test_nothing_reaches_the_shell_string_unchecked(self):
+        # The command is a shell string, so the argv comes only from the
+        # library that refuses anything the helper would not accept.
+        main = self.main()
+        run = re.search(r"function runControl\([^)]*\)\s*\{(.*?)\n    \}", main, re.S).group(1)
+        self.assertIn("exec.run(words.join(\" \"))", run)
+        for fn in ("setService", "setRadio"):
+            body = re.search(rf"function {fn}\([^)]*\)\s*\{{(.*?)\n    \}}", main, re.S).group(1)
+            self.assertLess(body.index("Controls."), body.index("runControl("), fn)
+            self.assertIn("catch", body, fn)
+            self.assertNotIn("exec.run", body, fn)
+
+    def test_each_poll_has_its_own_error_and_flag(self):
+        main = self.main()
+        for name in ("servicesError", "radiosError", "servicesUnsupported", "radiosUnsupported"):
+            self.assertIn(f"property", main[main.index(name) - 30 : main.index(name)])
+        branch = main[main.index('if (kind === "services" || kind === "radios")') : main.index('if (kind === "control")')]
+        self.assertNotIn("lastError", branch)
+        self.assertNotIn("actionError", branch)
+        self.assertNotIn("timeError", branch)
+
+    def test_a_failed_verb_takes_back_only_its_own_request(self):
+        main = self.main()
+        control = main[main.index('if (kind === "control")') : main.index('if (kind === "devices")')]
+        self.assertIn("Controls.directError(code, stderr, root.tr)", control)
+        self.assertIn("dropInflight()", control)
+        # A pkexec verb (a system service) is an action: a dismissed prompt
+        # takes the request back too.
+        action = main[main.index("if (inflight.length > 0)") :]
+        self.assertIn("dropInflight()", action[:200])
+
+    def test_a_poll_only_drops_the_request_when_it_started_after_the_last_verb_ended(self):
+        main = self.main()
+        branch = main[main.index('if (kind === "services" || kind === "radios")') : main.index('if (kind === "control")')]
+        self.assertIn("Controls.pendingFresh(started, epoch, acting)", branch)
+        # The decision comes before either early return, so a failed poll
+        # and a missing helper are covered too.
+        self.assertLess(branch.index("pendingFresh"), branch.index("if (out.keep)"))
+        # A poll that began before a verb ended is followed by another.
+        self.assertIn("started !== epoch", branch)
+        # The epoch moves when a verb begins and when it ends, either way.
+        run = re.search(r"function runControl\([^)]*\)\s*\{(.*?)\n    \}", main, re.S).group(1)
+        self.assertIn("epoch += 1", run)
+        self.assertEqual(main.count("epoch += 1"), 3)
+        # The epoch a poll started in is recorded once, not overwritten by a
+        # second request while the first is still running.
+        start = re.search(r"function startPoll\([^)]*\)\s*\{(.*?)\n    \}", main, re.S).group(1)
+        self.assertIn("hasOwnProperty(kind)", start)
+        body = re.search(r"function dropPending\([^)]*\)\s*\{(.*?)\n    \}", main, re.S).group(1)
+        self.assertNotIn("if (acting) return;", body)
+
+    def test_the_library_is_imported_where_it_is_used(self):
+        for text in (self.main(), self.full()):
+            self.assertIn('import "controlslogic.js" as Controls', text)
+
+    def test_the_library_is_a_pragma_library_with_a_licence_header(self):
+        js = read(os.path.join(UI, "controlslogic.js"))
+        self.assertTrue(js.startswith(".pragma library\n"))
+        self.assertIn("SPDX-License-Identifier: GPL-3.0-or-later", js)
+        self.assertNotRegex(js, r"\bi18n\(")
+
+    def test_the_panel_is_one_panel_with_three_groups_and_a_scroll(self):
+        full = self.full()
+        self.assertIn("root.controlStrings.heading", full)
+        for group in ("group_devices", "group_services", "group_radios"):
+            self.assertIn(f"root.controlStrings.{group}", full)
+        self.assertIn("PlasmaComponents.ScrollView", full)
+        self.assertNotIn('i18n("Radio devices")', full)
+        self.assertIn("Controls.strings(tr)", self.main())
+
+    def test_each_service_has_a_running_switch_and_a_login_checkbox(self):
+        full = self.full()
+        self.assertIn("PlasmaComponents.CheckBox", full)
+        self.assertIn("root.controlStrings.login_label", full)
+        self.assertIn("root.setService(row, Controls.runVerb(row))", full)
+        self.assertIn("root.setService(row, Controls.loginVerb(row))", full)
+        self.assertIn("root.setRadio(row, wantOn)", full)
+
+    def test_the_rows_drawn_are_the_pending_overlay_not_the_helpers_rows(self):
+        main, full = self.main(), self.full()
+        self.assertIn("Controls.effectiveServices(servicesRows, pending)", main)
+        self.assertIn("Controls.effectiveRadios(radiosRows, pending)", main)
+        self.assertIn("root.effectiveServices", full)
+        self.assertIn("root.effectiveRadios", full)
+        self.assertNotIn("root.servicesRows", full)
+        self.assertNotIn("root.radiosRows", full)
+
+    def test_a_dismissed_prompt_leaves_the_truth_checked(self):
+        full = self.full()
+        self.assertIn("checked = Qt.binding(() => Controls.runChecked(modelData))", full)
+        self.assertIn("checked = Qt.binding(() => Controls.loginChecked(modelData))", full)
+        self.assertIn("checked = Qt.binding(() => modelData.enabled)", full)
+
+    def test_an_absent_radio_and_a_missing_service_are_disabled_by_the_shared_rules(self):
+        full = self.full()
+        self.assertIn("enabled: Controls.radioEnabled(modelData, root.acting)", full)
+        self.assertIn("enabled: Controls.runEnabled(modelData, root.acting)", full)
+        self.assertIn("enabled: Controls.loginEnabled(modelData, root.acting)", full)
+
+    def test_a_helper_without_the_verb_is_one_line_per_group(self):
+        full = self.full()
+        self.assertEqual(full.count("text: root.controlStrings.update"), 2)
+        self.assertIn("root.servicesUnsupported", full)
+        self.assertIn("root.radiosUnsupported", full)

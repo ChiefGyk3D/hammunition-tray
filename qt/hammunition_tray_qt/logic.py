@@ -16,7 +16,8 @@ import json
 import re
 from dataclasses import dataclass, replace
 
-from . import timelogic
+from . import controls, timelogic
+from .controls import RadioRow, ServiceRow, ServicesDoc
 from .timelogic import TimeState
 
 # The wrapper `hammunition hardware apply` installs. The polkit action
@@ -101,11 +102,35 @@ class TrayState:
     time_state: TimeState | None = None
     time_unsupported: bool = False
     time_error: str = ""
+    # The Controls panel's Services and Radios groups (helper contract v1,
+    # see controls.py). Each has the same three fields as the Time section
+    # and for the same reason: its own error, so no poll clears another's,
+    # and "unsupported" for a helper without the verb.
+    services: ServicesDoc | None = None
+    services_unsupported: bool = False
+    services_error: str = ""
+    radios: tuple[RadioRow, ...] | None = None
+    radios_unsupported: bool = False
+    radios_error: str = ""
+    # What the operator just asked for and no poll has confirmed: shown at
+    # once, replaced by the next poll, dropped if the verb fails.
+    # (key, value) pairs; see controls.service_pending.
+    pending: controls.Pending = ()
+    # The keys the action in flight added, so a failure can take back
+    # exactly those.
+    inflight: tuple[str, ...] = ()
+    # Counts verb boundaries: one when a service or radio verb begins and one
+    # when it ends. A poll records it when it starts, and only one that
+    # started after the last verb ended may drop the pending requests
+    # (controls.pending_fresh); an earlier one is a picture from before it.
+    epoch: int = 0
 
 
 @dataclass(frozen=True)
 class MenuEntry:
-    kind: str  # info | toggle | forget | heading | time | note | mode | error | footer | separator | quit
+    # info | toggle | forget | heading | time | note | mode | error | footer
+    # | separator | quit | service-run | service-login | radio
+    kind: str
     text: str = ""
     enabled: bool = False
     checked: bool | None = None
@@ -113,6 +138,10 @@ class MenuEntry:
     device: Device | None = None
     # For kind "mode": the engine's name for the mode this item sets.
     mode: str | None = None
+    # For "service-run" and "service-login", the row; for "radio", the radio.
+    # The verb is start|stop|enable|disable or on|off.
+    service: ServiceRow | None = None
+    radio: RadioRow | None = None
 
 
 def parse_state(stdout: str) -> tuple[Device, ...]:
@@ -173,6 +202,110 @@ def time_mode_argv(mode: str) -> tuple[str, list[str]]:
     """pkexec, the helper, ``time mode`` and one of the engine's four modes;
     any other string is refused before it reaches pkexec."""
     return timelogic.time_mode_argv(PKEXEC, HELPER, mode)
+
+
+def services_poll_argv() -> tuple[str, list[str]]:
+    return controls.services_poll_argv(HELPER)
+
+
+def radios_poll_argv() -> tuple[str, list[str]]:
+    return controls.radios_poll_argv(HELPER)
+
+
+def control_argv(entry: "MenuEntry") -> tuple[str, list[str]]:
+    """The argv for a service or radio entry: the helper directly for a
+    user-scope service and a radio, pkexec for a system-scope service."""
+    if entry.service is not None and entry.verb is not None:
+        return controls.service_argv(PKEXEC, HELPER, entry.service, entry.verb)
+    if entry.radio is not None and entry.verb in ("on", "off"):
+        return controls.radio_argv(HELPER, entry.radio, entry.verb == "on")
+    raise ValueError("this entry has nothing to run")
+
+
+def _drop(pending: controls.Pending, prefix: str) -> controls.Pending:
+    return tuple(p for p in pending if not p[0].startswith(prefix))
+
+
+def apply_services_poll(
+    state: TrayState, result: ProcResult, epoch: int | None = None
+) -> TrayState:
+    """``epoch`` is ``state.epoch`` as it was when this poll started."""
+    out = controls.poll_outcome(
+        "services", result.started, result.crashed, result.code, result.stdout, result.stderr
+    )
+    return _apply_group(state, out, "service:", epoch)
+
+
+def apply_radios_poll(
+    state: TrayState, result: ProcResult, epoch: int | None = None
+) -> TrayState:
+    out = controls.poll_outcome(
+        "radios", result.started, result.crashed, result.code, result.stdout, result.stderr
+    )
+    return _apply_group(state, out, "radio:", epoch)
+
+
+def _apply_group(
+    state: TrayState, out: controls.GroupOutcome, prefix: str, epoch: int | None
+) -> TrayState:
+    kind = "services" if prefix == "service:" else "radios"
+    err = f"{kind}_error"
+    unsupported = f"{kind}_unsupported"
+    # A poll that was running before a verb began, or lands while one runs,
+    # must not take the operator's request back off the screen; any poll
+    # that started after the last verb ended is the truth, a failed one
+    # included (the last rows the helper gave, not an intent nothing can
+    # confirm).
+    fresh = controls.pending_fresh(epoch, state.epoch, state.acting)
+    pending = _drop(state.pending, prefix) if fresh else state.pending
+    if out.keep:
+        return replace(state, pending=pending, **{err: out.error})
+    if out.doc is None and not out.unsupported:
+        # No helper: the device poll says so, this group changes nothing.
+        return replace(state, pending=pending, **{err: ""})
+    return replace(
+        state,
+        pending=pending,
+        **{kind: out.doc, unsupported: out.unsupported, err: out.error},
+    )
+
+
+def begin_control(state: TrayState, entry: "MenuEntry") -> TrayState:
+    """A service or radio switch was used: show what it asks for at once."""
+    if entry.service is not None and entry.verb is not None:
+        key, value = controls.service_pending(entry.verb, entry.service.name)
+    elif entry.radio is not None and entry.verb in ("on", "off"):
+        key, value = controls.radio_pending(entry.radio.name, entry.verb == "on")
+    else:
+        raise ValueError("this entry has nothing to run")
+    pending = tuple(p for p in state.pending if p[0] != key) + ((key, value),)
+    return replace(
+        state,
+        acting=True,
+        last_error="",
+        action_error="",
+        pending=pending,
+        inflight=(key,),
+        epoch=state.epoch + 1,
+    )
+
+
+def apply_control(
+    state: TrayState, entry: "MenuEntry", result: ProcResult, desktop: str = ""
+) -> TrayState:
+    """A service or radio verb finished. Success keeps the intent on screen
+    until the next poll confirms or contradicts it. Anything else takes it
+    back: a dismissed pkexec prompt silently (nothing was written), a refusal
+    with the helper's one line."""
+    through_pkexec = entry.service is not None and controls.uses_pkexec(entry.service)
+    if through_pkexec:
+        new = apply_action(state, result, desktop)
+    else:
+        error = controls.direct_error(result.started, result.crashed, result.code, result.stderr)
+        new = replace(state, acting=False, action_error=error or state.action_error)
+    if not result.started or result.crashed or result.code != 0:
+        new = replace(new, pending=tuple(p for p in new.pending if p[0] not in state.inflight))
+    return replace(new, inflight=(), epoch=state.epoch + 1)
 
 
 def apply_time_poll(state: TrayState, result: ProcResult) -> TrayState:
@@ -355,8 +488,83 @@ def _time_entries(state: TrayState) -> list[MenuEntry]:
     return entries
 
 
+def _group_line(text: str, kind: str = "info") -> MenuEntry:
+    return MenuEntry(kind, text)
+
+
+def _services_entries(state: TrayState) -> list[MenuEntry]:
+    """The Services group: per service a running switch and a start-at-login
+    switch, each showing what the operator last asked for until a poll
+    confirms it."""
+    entries = [MenuEntry("separator"), MenuEntry("heading", controls.GROUP_SERVICES)]
+    if state.services_unsupported:
+        return entries + [_group_line(controls.UPDATE)]
+    if state.services is None:
+        if not state.services_error:
+            entries.append(_group_line(controls.READING_SERVICES))
+    elif not state.services.rows:
+        entries.append(_group_line(controls.NO_SERVICES))
+    else:
+        for row in controls.effective_services(state.services.rows, state.pending):
+            detail = controls.service_detail(row)
+            entries.append(
+                MenuEntry(
+                    kind="service-run",
+                    text=f"{controls.service_label(row)} — {detail}" if detail else controls.service_label(row),
+                    enabled=controls.run_enabled(row, state.acting),
+                    checked=controls.run_checked(row),
+                    verb=controls.run_verb(row),
+                    service=row,
+                )
+            )
+            entries.append(
+                MenuEntry(
+                    kind="service-login",
+                    text=f"↳ {controls.LOGIN_LABEL}",
+                    enabled=controls.login_enabled(row, state.acting),
+                    checked=controls.login_checked(row),
+                    verb=controls.login_verb(row),
+                    service=row,
+                )
+            )
+    if state.services_error:
+        entries.append(MenuEntry("error", state.services_error))
+    return entries
+
+
+def _radios_entries(state: TrayState) -> list[MenuEntry]:
+    entries = [MenuEntry("separator"), MenuEntry("heading", controls.GROUP_RADIOS)]
+    if state.radios_unsupported:
+        return entries + [_group_line(controls.UPDATE)]
+    if state.radios is None:
+        if not state.radios_error:
+            entries.append(_group_line(controls.READING_RADIOS))
+    elif not state.radios:
+        entries.append(_group_line(controls.NO_RADIOS))
+    else:
+        for row in controls.effective_radios(state.radios, state.pending):
+            detail = controls.radio_detail(row)
+            label = controls.radio_label(row)
+            entries.append(
+                MenuEntry(
+                    kind="radio",
+                    text=f"{label} — {detail}" if detail else label,
+                    enabled=controls.radio_enabled(row, state.acting),
+                    checked=row.enabled,
+                    verb=controls.radio_verb(row),
+                    radio=row,
+                )
+            )
+    if state.radios_error:
+        entries.append(MenuEntry("error", state.radios_error))
+    return entries
+
+
 def menu_model(state: TrayState) -> list[MenuEntry]:
-    entries: list[MenuEntry] = []
+    entries: list[MenuEntry] = [
+        MenuEntry("heading", controls.HEADING),
+        MenuEntry("heading", controls.GROUP_DEVICES),
+    ]
     if state.helper_missing:
         entries += [
             MenuEntry("info", "Device control is not installed"),
@@ -384,6 +592,8 @@ def menu_model(state: TrayState) -> list[MenuEntry]:
     if not state.helper_missing:
         entries += [MenuEntry("separator"), MenuEntry("footer", FOOTER)]
         # After the footer, which is about the devices above it.
+        entries += _services_entries(state)
+        entries += _radios_entries(state)
         entries += _time_entries(state)
     # The action's error last: it may be a park, a wake or a time mode.
     for error in (state.time_error, state.action_error):

@@ -29,6 +29,45 @@
 - CI: the whole test directory runs under pytest; a new job tests the helper
   on Python 3.11 and 3.13 from a real `pip install ./devctl`, with
   `mypy --strict`; the release checks the third package on Parrot.
+### 0.5.0 (the Controls panel)
+
+- **One "Controls" panel, three groups**, worded identically in the Plasma
+  applet and the Qt tray: **Devices** (today's rows, unchanged),
+  **Services** and **Radios**.
+- **Services**, from `hammunition-devctl services state`: per row a running
+  switch and a "Start at login" checkbox; "not installed" and no switch for
+  a unit that is not installed (the helper lists it as `not-found`, never
+  omits it). A user-scope service runs the helper directly with no prompt; a
+  system-scope service goes through `/usr/bin/pkexec` and the same polkit
+  action as park and wake.
+- **Radios**, from `hammunition-devctl radio state`: one switch each for
+  WWAN, Wi-Fi and Bluetooth, run directly. A radio whose tool is absent
+  shows the helper's reason and is disabled.
+- **The 5 s poll asks for all four documents** (`state`, `time state`,
+  `services state`, `radio state`), each with its own error and guard so no
+  poll clears another's. A helper that lacks a verb shows one line,
+  "update hammunition-tray", for that group, never an error.
+- **A switch moves at once**; the next poll confirms or contradicts it; a
+  failed verb puts it back and shows the helper's one-line error, and a
+  dismissed password prompt puts it back silently.
+- A poll that was already running when a verb began cannot undo the
+  switch: each poll records which verbs had finished when it started, and
+  only one that started after the last verb ended may drop the request. A
+  failed poll after a verb drops it too, so an intent nothing can confirm
+  is not shown for ever.
+- A user service named like a poll (`state`, `radio`, `pkexec-...`) cannot
+  be mistaken for one: the applet tells finished commands apart by their
+  shape, not by what they contain.
+- **Helper contract version 1** is the floor, recorded once
+  (`CONTRACT_FLOOR`, in `controls.py` and `controlslogic.js`, held equal by
+  test) and compared with each document's `version`.
+- Nothing odd can reach a command: only the four service verbs and the three
+  radio names, and a service name only in the helper's own shape (the
+  Plasma applet builds a shell string from it).
+- The Plasma popup is now a scroll view, and its heading reads "Controls".
+- New: `qt/hammunition_tray_qt/controls.py` and
+  `plasmoid/package/contents/ui/controlslogic.js` (both packaged), and a
+  parity test over every new fixture, string, argv and dispatch case.
 
 ## [0.4.0] - 2026-10-01
 

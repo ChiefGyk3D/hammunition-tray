@@ -110,6 +110,9 @@ class Tray(QObject):
         # The time poll has its own guard: a slow ntpq must not hold up the
         # device list, nor the other way round.
         self._time_polling = False
+        # Likewise one guard each for the Services and Radios groups.
+        self._services_polling = False
+        self._radios_polling = False
         self._model: list[MenuEntry] | None = None
 
         self.menu = QMenu()
@@ -136,7 +139,55 @@ class Tray(QObject):
     # -- polling ---------------------------------------------------------
 
     def refresh(self) -> None:
+        # All four documents on every tick, each with its own guard.
         self._refresh_time()
+        self._refresh_devices()
+        self._refresh_services()
+        self._refresh_radios()
+
+    def _refresh_services(self) -> None:
+        if self._services_polling:
+            return
+        self._services_polling = True
+        program, args = logic.services_poll_argv()
+        started = self.state.epoch
+        self.runner.run(
+            program,
+            args,
+            lambda result: self._services_polled(result, started),
+            timeout_ms=POLL_TIMEOUT_MS,
+        )
+
+    def _services_polled(self, result: ProcResult, started: int) -> None:
+        self._services_polling = False
+        self.state = logic.apply_services_poll(self.state, result, started)
+        self._render()
+        if started != self.state.epoch:
+            # It began before a verb ended: ask again, so the confirmation
+            # does not wait for the next tick.
+            self._refresh_services()
+
+    def _refresh_radios(self) -> None:
+        if self._radios_polling:
+            return
+        self._radios_polling = True
+        program, args = logic.radios_poll_argv()
+        started = self.state.epoch
+        self.runner.run(
+            program,
+            args,
+            lambda result: self._radios_polled(result, started),
+            timeout_ms=POLL_TIMEOUT_MS,
+        )
+
+    def _radios_polled(self, result: ProcResult, started: int) -> None:
+        self._radios_polling = False
+        self.state = logic.apply_radios_poll(self.state, result, started)
+        self._render()
+        if started != self.state.epoch:
+            self._refresh_radios()
+
+    def _refresh_devices(self) -> None:
         if self._polling:
             self._repoll = True
             return
@@ -169,7 +220,31 @@ class Tray(QObject):
 
     # -- actions ---------------------------------------------------------
 
+    def act_control(self, entry: MenuEntry) -> None:
+        """A service or radio switch. The intent shows at once; the next
+        poll confirms it, and a failed verb takes it back."""
+        if self.state.acting or entry.verb is None:
+            return
+        try:
+            program, args = logic.control_argv(entry)
+        except ValueError as exc:
+            self.state = replace(self.state, action_error=str(exc))
+            self._render(force=True)
+            return
+        self.state = logic.begin_control(self.state, entry)
+        self._render(force=True)
+        self.runner.run(program, args, lambda result, e=entry: self._controlled(e, result))
+
+    def _controlled(self, entry: MenuEntry, result: ProcResult) -> None:
+        desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
+        self.state = logic.apply_control(self.state, entry, result, desktop)
+        self._render(force=True)
+        self.refresh()
+
     def act(self, entry: MenuEntry) -> None:
+        if entry.kind in ("service-run", "service-login", "radio"):
+            self.act_control(entry)
+            return
         if self.state.acting or entry.verb is None:
             return
         if entry.kind == "mode" and entry.checked:
@@ -232,10 +307,10 @@ class Tray(QObject):
             action = QAction(_menu_text(entry.text), self.menu)
             action.setToolTip(entry.text)
             action.setEnabled(entry.enabled)
-            if entry.kind in ("toggle", "mode"):
+            if entry.kind in ("toggle", "mode", "service-run", "service-login", "radio"):
                 action.setCheckable(True)
                 action.setChecked(bool(entry.checked))
-            if entry.kind in ("toggle", "forget", "mode"):
+            if entry.kind in ("toggle", "forget", "mode", "service-run", "service-login", "radio"):
                 action.triggered.connect(lambda _=False, e=entry: self.act(e))
             elif entry.kind == "quit":
                 action.triggered.connect(QApplication.quit)
