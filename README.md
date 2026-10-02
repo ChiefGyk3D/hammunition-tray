@@ -10,6 +10,9 @@ its interfaces and the USB port can suspend; waking writes `1`. On a laptop
 that is the difference between a GNSS receiver drawing power all day and
 drawing none, without unplugging anything.
 
+**A Controls panel** also switches the GPS services and the machine's radios,
+beside the device switches: [below](#the-controls-panel).
+
 **A Time section** shows what the clock follows and sets the mode of
 Hammunition's GPS time (its D-058) — [below](#the-time-section).
 
@@ -104,6 +107,68 @@ belong to the engine, and `hammunition hardware unapply` removes those.
   written, so nothing moves — the switch shows the device's real state, not
   what you asked for.
 
+## The Controls panel
+
+One panel, three groups, worded identically in the Plasma applet and in the
+Qt tray (a test holds them to it). The Plasma applet scrolls when the panel
+is taller than the popup; the Qt tray's menu has a section heading per group.
+
+- **Devices**: exactly what is described above. Nothing about it changed.
+- **Services**: one row per service the helper controls, from
+  `hammunition-devctl services state`: a **switch** for *running* and a
+  **"Start at login"** checkbox. The rows are the helper's allow-list
+  (`/etc/hammunition/devctl-services.yaml` for the system's,
+  `~/.config/hammunition/devctl-services.yaml` for your own), so what is
+  listed is whatever the engine registered: the GPS daemon, the clock, the
+  GPS tether, `rigctld`. A service whose unit is not installed is still
+  listed, says *not installed*, and cannot be switched. *Start at login* is
+  disabled for a unit that has nothing to enable (`static`).
+- **Radios**: one switch each for mobile broadband (WWAN), Wi-Fi and
+  Bluetooth, from `hammunition-devctl radio state`. A radio whose tool the
+  helper could not use (NetworkManager's `nmcli`, `bluetoothctl`) shows the
+  helper's reason and is disabled.
+
+**Which switch asks for a password.** Reading is never privileged: every
+tick (5 s by default) runs `state`, `time state`, `services state` and
+`radio state` directly, with no prompt. Changing:
+
+| switch | runs | prompt |
+|---|---|---|
+| a device (park, wake, forget) | `/usr/bin/pkexec HELPER park\|wake NAME@ADDRESS` | one |
+| a clock mode | `/usr/bin/pkexec HELPER time mode MODE` | one |
+| a **system** service (running or login) | `/usr/bin/pkexec HELPER services start\|stop\|enable\|disable NAME` | one, the same polkit action |
+| a **user** service (running or login) | `HELPER services start\|stop\|enable\|disable NAME` | none: `systemctl --user` as you |
+| a radio | `HELPER radio on\|off wwan\|wifi\|bluetooth` | none: polkit already lets an active session do it |
+
+`HELPER` is `/usr/local/libexec/hammunition-devctl`. A service's scope comes
+from its row, and a name must have the shape the helper accepts
+(`[a-z0-9][a-z0-9-]{0,63}`) or it never reaches a command; the Plasma applet
+builds a shell string, so that check is the one that matters there. Only the
+four verbs, and only the three radios, can be sent.
+
+**What a switch does when you use it.** It moves at once, to what you asked
+for. The next poll replaces that with what the helper really reports, so a
+verb that "worked" but left the service somewhere else shows where it is. If
+the verb fails, the switch goes back and the helper's one line is shown
+(`error: ...` or `unverified: ...`); a dismissed or refused password prompt
+goes back silently, since nothing was written. While a verb runs, every
+switch is disabled.
+
+**A helper without these verbs.** The group says one line, *update
+hammunition-tray*, instead of an error; the poll keeps asking, so updating
+brings it in without logging out. That is the helper answering exit 2 with
+argparse's "invalid choice", and nothing else: the helper's own refusals,
+also exit 2, are shown as errors.
+
+**The helper contract.** The helper's interface is `docs/contract.md` in its
+repository; this tray speaks **contract version 1**. The floor is one
+number, `CONTRACT_FLOOR` in `qt/hammunition_tray_qt/controls.py` and
+`controlslogic.js`, compared with the `version` of each document the helper
+prints; a document that says less, or nothing, is *update hammunition-tray*.
+A document that says more is read as far as this tray understands it. A
+state or a radio this tray does not know is shown and never offered a
+switch.
+
 ## The Time section
 
 Below the switches, both front ends show Hammunition's GPS time (engine
@@ -135,7 +200,7 @@ Below the switches, both front ends show Hammunition's GPS time (engine
 - **No hardware clock** is a line in the tooltip.
 
 Reading it is `hammunition-devctl time state` with no pkexec, polled with
-the devices. The Qt tray shows the same as a *Time* section in its menu,
+the devices (and, since 0.5.0, the services and radios). The Qt tray shows the same as a *Time* section in its menu,
 with the modes as checkable items; a menu has no opacity, so there the
 reason is the note.
 
@@ -220,6 +285,17 @@ are expected to host it through StatusNotifierItem or XEmbed, which Qt
 chooses between, but that is an expectation, not a measurement.
 
 ## Status
+
+0.5.0 (unreleased). **The Controls panel** is tested against fake helper
+documents for every state of a service and a radio, with the applet's
+`controlslogic.js` and the tray's `controls.py` required to agree word for
+word, and the Qt tray's menu is driven end to end by a fake runner. Neither
+front end has been opened on a real panel, and no service or radio has been
+switched from either against the real helper: the Plasma panel in
+particular (its new scroll view and the check boxes) has been parsed, not
+rendered. The helper's `services` and `radio` verbs are from the helper
+repository's contract, version 1, and are not yet installed on any machine
+this was run on.
 
 0.4.0. **The Time section** is tested against fake helper outputs for every
 state the engine's `time state` can report, with the applet's

@@ -79,6 +79,7 @@ class QtDebianPackage(unittest.TestCase):
             LAUNCHER,
             f"{LIB}/__init__.py",
             f"{LIB}/__main__.py",
+            f"{LIB}/controls.py",
             f"{LIB}/logic.py",
             f"{LIB}/timelogic.py",
             f"{LIB}/tray.py",

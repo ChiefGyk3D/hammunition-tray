@@ -15,6 +15,7 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.notification
 import "timelogic.js" as TimeLogic
+import "controlslogic.js" as Controls
 
 PlasmoidItem {
     id: root
@@ -65,6 +66,33 @@ PlasmoidItem {
 
     readonly property bool timeGreyed: TimeLogic.greyed(timeState)
     readonly property bool timeChoosable: TimeLogic.canChoose(timeState, timeUnsupported)
+
+    // The Controls panel's Services and Radios groups (helper contract v1,
+    // controlslogic.js, shared word for word with the Qt tray's
+    // controls.py). Each group is the rows its poll returned (null until the
+    // first answer), a flag for a helper without the verb, and its own error,
+    // for the same reasons as the Time section.
+    property var servicesRows: null
+    property bool servicesUnsupported: false
+    property string servicesError: ""
+    property var radiosRows: null
+    property bool radiosUnsupported: false
+    property string radiosError: ""
+
+    // What the operator just asked for and no poll has confirmed: shown at
+    // once, replaced by the next poll, dropped if the verb fails.
+    // controlslogic.js has the keys; `inflight` is the key the running verb
+    // added, so a failure takes back exactly that.
+    property var pending: ({})
+    property var inflight: []
+
+    // The rows as they should be drawn: the helper's, with the pending
+    // requests applied.
+    readonly property var effectiveServices: servicesRows === null ? null : Controls.effectiveServices(servicesRows, pending)
+    readonly property var effectiveRadios: radiosRows === null ? null : Controls.effectiveRadios(radiosRows, pending)
+
+    // The panel's fixed sentences, from the one table the parity test pins.
+    readonly property var controlStrings: Controls.strings(tr)
 
     // i18n, handed to timelogic.js, which as a library script has no QML
     // context of its own. Spelled out by argument count rather than spread,
@@ -117,9 +145,13 @@ PlasmoidItem {
     // Neither read needs privilege -- reading sysfs and asking ntpq do not,
     // only writing does -- so the poll runs the helper directly and no prompt
     // appears for either.
+    // All four documents on every tick: the devices, the clock, the services
+    // and the radios. None of them needs privilege.
     function refresh() {
         exec.run(helper + " state");
         exec.run(helper + " time state");
+        exec.run(helper + " services state");
+        exec.run(helper + " radio state");
     }
 
     // NAME@ADDRESS, always. Two receivers of one class share a catalog name
@@ -160,6 +192,64 @@ PlasmoidItem {
         exec.run("/usr/bin/pkexec " + helper + " time mode " + mode);
     }
 
+    // A service or radio switch. `words` is the argv, program first, which
+    // controlslogic.js has already refused anything odd for; `pend` is the
+    // [key, value] the request expects. The intent shows at once.
+    function runControl(words, pend) {
+        acting = true;
+        lastError = "";
+        actionError = "";
+        const next = {};
+        for (const k in pending) next[k] = pending[k];
+        next[pend[0]] = pend[1];
+        pending = next;
+        inflight = [pend[0]];
+        exec.run(words.join(" "));
+    }
+
+    // User scope runs the helper directly; system scope goes through
+    // /usr/bin/pkexec by its path, the same polkit action as park and wake.
+    function setService(row, verb) {
+        if (acting) return;
+        let words;
+        try {
+            words = Controls.serviceArgv("/usr/bin/pkexec", helper, row, verb);
+        } catch (e) {
+            actionError = e.message;
+            return;
+        }
+        runControl(words, Controls.servicePending(verb, row.name));
+    }
+
+    // Always direct: a radio switch needs no root in the active session.
+    function setRadio(row, on) {
+        if (acting) return;
+        let words;
+        try {
+            words = Controls.radioArgv(helper, row, on);
+        } catch (e) {
+            actionError = e.message;
+            return;
+        }
+        runControl(words, Controls.radioPending(row.name, on));
+    }
+
+    // A failed verb takes back exactly the request it added.
+    function dropInflight() {
+        const next = {};
+        for (const k in pending) if (inflight.indexOf(k) === -1) next[k] = pending[k];
+        pending = next;
+    }
+
+    // A poll that lands while a verb is running is a picture from before it:
+    // it must not take the operator's request off the screen.
+    function dropPending(prefix) {
+        if (acting) return;
+        const next = {};
+        for (const k in pending) if (k.indexOf(prefix) !== 0) next[k] = pending[k];
+        pending = next;
+    }
+
     Plasma5Support.DataSource {
         id: exec
         engine: "executable"
@@ -190,6 +280,43 @@ PlasmoidItem {
                 timeState = out.state;
                 timeUnsupported = out.unsupported;
             }
+            return;
+        }
+
+        if (kind === "services" || kind === "radios") {
+            const out = Controls.pollOutcome(kind, code, stdout, stderr, root.tr);
+            const isServices = kind === "services";
+            if (out.keep) {
+                if (isServices) servicesError = out.error; else radiosError = out.error;
+                return;
+            }
+            // No helper: the device poll says so, this group changes nothing.
+            if (out.doc === null && !out.unsupported) {
+                if (isServices) servicesError = ""; else radiosError = "";
+                return;
+            }
+            dropPending(isServices ? "service:" : "radio:");
+            if (isServices) {
+                servicesRows = out.doc === null ? null : out.doc.rows;
+                servicesUnsupported = out.unsupported;
+                servicesError = out.error;
+            } else {
+                radiosRows = out.doc;
+                radiosUnsupported = out.unsupported;
+                radiosError = out.error;
+            }
+            return;
+        }
+
+        if (kind === "control") {
+            // A user-scope service or a radio, run without pkexec: any
+            // failure is the helper's own one line, and takes the request
+            // back off the screen.
+            acting = false;
+            actionError = Controls.directError(code, stderr, root.tr);
+            if (code !== 0) dropInflight();
+            inflight = [];
+            refresh();
             return;
         }
 
@@ -230,6 +357,12 @@ PlasmoidItem {
         // agent at all, where every click would otherwise do nothing and say
         // nothing (the Qt tray's rule, here for parity).
         acting = false;
+        // A system-scope service verb is an action too: whatever did not
+        // succeed, a dismissed prompt included, takes its request back.
+        if (inflight.length > 0) {
+            if (code !== 0) dropInflight();
+            inflight = [];
+        }
         if (code === 127 && stderr.toLowerCase().indexOf("no authentication agent") !== -1) {
             actionError = i18n("No polkit authentication agent is running, so no password prompt could appear. Install one (polkit-kde-agent-1) and log in again.");
         } else if (code !== 0 && code !== 126 && code !== 127) {

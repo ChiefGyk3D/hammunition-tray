@@ -32,6 +32,7 @@ HELPER = "/usr/local/libexec/hammunition-devctl"
 PKEXEC = "/usr/bin/pkexec"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from controls_fixtures import RADIOS, RADIOS_POLLS, SERVICES, SERVICES_POLLS  # noqa: E402
 from time_fixtures import POLLS, STATES  # noqa: E402
 
 
@@ -42,6 +43,19 @@ def _time_ok(row=None):
 
 
 TIME_OK = _time_ok()
+
+
+def _doc_ok(doc):
+    from hammunition_tray_qt.logic import ProcResult
+
+    return ProcResult(started=True, stdout=json.dumps(doc))
+
+
+def _poll(triple):
+    from hammunition_tray_qt.logic import ProcResult
+
+    code, out, err = triple
+    return ProcResult(started=True, code=code, stdout=out, stderr=err)
 
 
 def row(**kw):
@@ -68,13 +82,21 @@ class FakeRunner:
         from hammunition_tray_qt.logic import ProcResult
 
         self.calls.append((program, list(args)))
-        # "state" and "time state" for the polls; "park", "wake" and
-        # "time mode MODE" for what goes through pkexec.
+        # "state", "time state", "services state" and "radio state" for the
+        # polls; "park", "wake" and "time mode MODE" for what goes through
+        # pkexec; "services VERB NAME" through pkexec for a system-scope
+        # service and straight to the helper for a user-scope one; and
+        # "radio on|off NAME", always direct.
         if program == HELPER:
             key = " ".join(args)
         else:
             key = args[1] if args[1] in ("park", "wake") else " ".join(args[1:])
-        default = TIME_OK if key == "time state" else ProcResult(started=True, stdout="[]")
+        defaults = {
+            "time state": TIME_OK,
+            "services state": _doc_ok(SERVICES["empty"]),
+            "radio state": _doc_ok(RADIOS["empty"]),
+        }
+        default = defaults.get(key, ProcResult(started=True, stdout="[]"))
         done(self.answers.get(key, default))
 
 
@@ -116,6 +138,19 @@ class Smoke(unittest.TestCase):
         self.assertFalse(self.action(tray, "u-blox GNSS receiver (1-5)").isChecked())
         self.assertIn("1 device parked", tray.icon.toolTip())
         self.assertFalse(tray.icon.icon().isNull())
+
+    def test_one_tick_asks_for_all_four_documents_with_no_pkexec(self):
+        tray, runner = self.make([row()])
+        tray.refresh()
+        self.assertEqual(
+            runner.calls,
+            [
+                (HELPER, ["time", "state"]),
+                (HELPER, ["state"]),
+                (HELPER, ["services", "state"]),
+                (HELPER, ["radio", "state"]),
+            ],
+        )
 
     def test_the_kept_notice_once(self):
         tray, _ = self.make([row(parked=True, kept=True)])
@@ -199,7 +234,7 @@ class Smoke(unittest.TestCase):
         tray.refresh()
         self.assertIn((HELPER, ["time", "state"]), runner.calls)
         sections = [a.text() for a in tray.menu.actions() if a.isSeparator() and a.text()]
-        self.assertEqual(sections, ["Time"])
+        self.assertEqual(sections, ["Controls", "Devices", "Services", "Radios", "Time"])
         self.assertIn("The clock follows the GPS (offset +3.3 ms)", self.texts(tray))
         modes = self.modes(tray)
         self.assertEqual(len(modes), 4)
@@ -270,6 +305,127 @@ class Smoke(unittest.TestCase):
         runner.answers["time state"] = _time_ok(STATES["no-rtc"])
         tray.refresh()
         self.assertIn("No hardware clock", tray.icon.toolTip())
+
+    # -- the Controls panel: services and radios (helper contract v1) -------
+
+    def services_tray(self, doc="d2", rows=None):
+        tray, runner = self.make(rows if rows is not None else [row()])
+        runner.answers["services state"] = _doc_ok(SERVICES[doc])
+        runner.answers["radio state"] = _doc_ok(RADIOS["d2"])
+        tray.refresh()
+        del runner.calls[:]
+        return tray, runner
+
+    def test_the_menu_has_the_three_groups_with_their_rows(self):
+        tray, _ = self.services_tray()
+        texts = self.texts(tray)
+        self.assertIn("gps-tether — GPS position for QMapShack and the browser map on 127.0.0.1", texts)
+        self.assertIn("rig — rigctld for this operator: not installed", texts)
+        self.assertEqual(texts.count("↳ Start at login"), 5)
+        self.assertIn("Mobile broadband (WWAN) — cdc-wdm0", texts)
+        self.assertIn("Wi-Fi — wlan0", texts)
+        self.assertIn("Bluetooth", texts)
+        self.assertTrue(self.action(tray, "gps-tether").isChecked())
+        self.assertFalse(self.action(tray, "rig").isEnabled())
+
+    def test_a_user_service_runs_the_helper_directly_never_pkexec(self):
+        tray, runner = self.services_tray()
+        self.action(tray, "gps-tether").trigger()
+        self.assertEqual(runner.calls[0], (HELPER, ["services", "stop", "gps-tether"]))
+        self.assertTrue(all(c[0] == HELPER for c in runner.calls))
+        # Every document is read again afterwards.
+        self.assertIn((HELPER, ["services", "state"]), runner.calls[1:])
+        self.assertIn((HELPER, ["radio", "state"]), runner.calls[1:])
+
+    def test_a_system_service_goes_through_pkexec(self):
+        tray, runner = self.services_tray()
+        self.action(tray, "gpsd").trigger()
+        self.assertEqual(runner.calls[0], (PKEXEC, [HELPER, "services", "stop", "gpsd"]))
+
+    def test_the_login_checkbox_enables_or_disables(self):
+        tray, runner = self.services_tray("disabled-at-login")
+        [login] = [a for a in tray.menu.actions() if a.text() == "↳ Start at login"]
+        self.assertFalse(login.isChecked())
+        login.trigger()
+        self.assertEqual(runner.calls[0], (HELPER, ["services", "enable", "gps-tether"]))
+
+    def test_a_radio_runs_the_helper_directly(self):
+        tray, runner = self.services_tray()
+        self.action(tray, "Wi-Fi").trigger()
+        self.assertEqual(runner.calls[0], (HELPER, ["radio", "off", "wifi"]))
+
+    def test_the_intent_shows_at_once_and_the_next_poll_confirms(self):
+        tray, runner = self.services_tray("running")
+        runner.answers["services state"] = _doc_ok(SERVICES["stopped"])
+        self.action(tray, "gps-tether").trigger()
+        self.assertFalse(self.action(tray, "gps-tether").isChecked())
+        self.assertEqual(tray.state.pending, ())
+
+    def test_a_failed_verb_reverts_and_shows_the_one_line_error(self):
+        from hammunition_tray_qt.logic import ProcResult
+
+        tray, runner = self.services_tray("running")
+        runner.answers["services stop gps-tether"] = ProcResult(
+            started=True, code=1, stderr="error: gps-tether: failed to stop\nTraceback...\n"
+        )
+        self.action(tray, "gps-tether").trigger()
+        self.assertTrue(self.action(tray, "gps-tether").isChecked())
+        self.assertIn("error: gps-tether: failed to stop", self.texts(tray))
+        self.assertFalse(any("Traceback" in t for t in self.texts(tray)))
+
+    def test_a_dismissed_system_prompt_leaves_the_service_as_it_was(self):
+        from hammunition_tray_qt.logic import ProcResult
+
+        tray, runner = self.services_tray()
+        runner.answers["services stop gpsd"] = ProcResult(started=True, code=126)
+        self.action(tray, "gpsd").trigger()
+        self.assertTrue(self.action(tray, "gpsd").isChecked())
+        self.assertEqual(tray.state.action_error, "")
+
+    def test_a_helper_without_the_verbs_says_update_once_per_group(self):
+        tray, runner = self.make([row()])
+        runner.answers["services state"] = _poll(SERVICES_POLLS["old-helper"])
+        runner.answers["radio state"] = _poll(RADIOS_POLLS["old-helper"])
+        for _ in range(3):
+            tray.refresh()
+        texts = self.texts(tray)
+        self.assertEqual(texts.count("update hammunition-tray"), 2)
+        self.assertFalse(any("invalid choice" in t for t in texts))
+        # The devices and the clock are untouched.
+        self.assertIn("u-blox GNSS receiver (1-4) — awake", texts)
+        self.assertEqual(len(self.modes(tray)), 4)
+
+    def test_a_service_name_that_is_not_an_allow_list_name_never_runs(self):
+        doc = {"kind": "services", "version": 1,
+               "services": [{"name": "x; reboot", "unit": "u.service", "scope": "user",
+                             "description": "d", "active": "active", "enabled": "enabled", "root": False}]}
+        tray, runner = self.make([row()])
+        runner.answers["services state"] = _doc_ok(doc)
+        tray.refresh()
+        del runner.calls[:]
+        self.action(tray, "x; reboot").trigger()
+        self.assertEqual(runner.calls, [])
+        self.assertTrue(any("refusing service name" in t for t in self.texts(tray)))
+
+    def test_an_absent_radio_tool_is_named_and_disabled(self):
+        tray, runner = self.make([row()])
+        runner.answers["radio state"] = _doc_ok(RADIOS["tool-missing"])
+        tray.refresh()
+        a = self.action(tray, "Bluetooth")
+        self.assertEqual(a.text(), "Bluetooth — not available: bluetoothctl is not installed")
+        self.assertFalse(a.isEnabled())
+
+    def test_helper_missing_hides_the_groups(self):
+        from hammunition_tray_qt.logic import ProcResult
+
+        tray, runner = self.make([])
+        runner.answers["state"] = ProcResult(started=False)
+        runner.answers["services state"] = ProcResult(started=False)
+        runner.answers["radio state"] = ProcResult(started=False)
+        tray.refresh()
+        sections = [a.text() for a in tray.menu.actions() if a.isSeparator() and a.text()]
+        self.assertNotIn("Services", sections)
+        self.assertNotIn("Radios", sections)
 
     def test_helper_missing(self):
         from hammunition_tray_qt.logic import ProcResult

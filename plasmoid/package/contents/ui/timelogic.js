@@ -18,14 +18,21 @@ var MODES = ["auto", "prefer-gps", "ntp-only", "gps-only"];
 // The engine release that added `time state`.
 var ENGINE_FLOOR = "0.18.0";
 
-// Which of the applet's commands a finished source was. " time state" must be
-// tested before " state", which it contains: the other way round, a time poll
+// Which of the applet's commands a finished source was. The order matters:
+// " services state", " radio state" and " time state" must each be tested
+// before " state", which they all contain: the other way round, any of them
 // would be parsed as the device list. A command through pkexec is an action
-// (park, wake or a time mode), never a poll.
+// (park, wake, a time mode or a system service verb), never a poll. A user
+// service verb or a radio verb runs the helper directly and is "control".
+// (It lives in this file, rather than controlslogic.js, because main.qml
+// has always dispatched through it; test_controls_parity pins every case.)
 function sourceKind(source) {
     if (source.indexOf("pkexec") !== -1) return "action";
+    if (source.indexOf(" services state") !== -1) return "services";
+    if (source.indexOf(" radio state") !== -1) return "radios";
     if (source.indexOf(" time state") !== -1) return "time";
     if (source.indexOf(" state") !== -1) return "devices";
+    if (source.indexOf(" services ") !== -1 || source.indexOf(" radio ") !== -1) return "control";
     return "action";
 }
 

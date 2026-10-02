@@ -264,15 +264,17 @@ class Greying(unittest.TestCase):
 class Menu(unittest.TestCase):
     def section(self, state):
         entries = logic.menu_model(state)
-        start = next(i for i, e in enumerate(entries) if e.kind == "heading")
+        start = next(i for i, e in enumerate(entries) if e.kind == "heading" and e.text == "Time")
         return entries[start:]
 
     def modes(self, state):
         return [e for e in logic.menu_model(state) if e.kind == "mode"]
 
     def test_the_section_follows_the_device_footer(self):
-        kinds = [e.kind for e in logic.menu_model(with_time("follows-gps"))]
-        self.assertLess(kinds.index("footer"), kinds.index("heading"))
+        entries = logic.menu_model(with_time("follows-gps"))
+        kinds = [e.kind for e in entries]
+        time_heading = next(i for i, e in enumerate(entries) if e.text == "Time")
+        self.assertLess(kinds.index("footer"), time_heading)
         self.assertEqual(kinds[-1], "quit")
 
     def test_heading_headline_and_four_modes_with_the_current_one_checked(self):
@@ -307,7 +309,9 @@ class Menu(unittest.TestCase):
 
     def test_hidden_when_the_helper_is_missing(self):
         s = TrayState(helper_missing=True, time_unsupported=True)
-        self.assertFalse(any(e.kind in ("heading", "time", "mode") for e in logic.menu_model(s)))
+        # The Devices group names itself even then; the Time section is gone.
+        self.assertFalse(any(e.kind in ("time", "mode") for e in logic.menu_model(s)))
+        self.assertNotIn("Time", [e.text for e in logic.menu_model(s) if e.kind == "heading"])
 
     def test_the_time_error_is_shown(self):
         s = poll("failed-with-stderr", with_time("follows-gps"))
