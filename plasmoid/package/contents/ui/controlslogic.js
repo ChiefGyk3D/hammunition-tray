@@ -36,6 +36,27 @@ var SCOPES = ["user", "system"];
 // The helper's own shape for a name from its allow-list files.
 var NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
+function sameRows(a, b) {
+    if (a === b) return true;
+    if (a === null || b === null || typeof a !== typeof b) return false;
+    if (Array.isArray(a)) {
+        if (!Array.isArray(b) || a.length !== b.length) return false;
+        for (var i = 0; i < a.length; i++)
+            if (!sameRows(a[i], b[i])) return false;
+        return true;
+    }
+    if (typeof a !== "object" || Array.isArray(b)) return false;
+    var aKeys = Object.keys(a);
+    var bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (var j = 0; j < aKeys.length; j++) {
+        var key = aKeys[j];
+        if (!Object.prototype.hasOwnProperty.call(b, key) || !sameRows(a[key], b[key]))
+            return false;
+    }
+    return true;
+}
+
 // Every fixed sentence, by name; controls.py's STRINGS is the same table.
 function strings(tr) {
     return {

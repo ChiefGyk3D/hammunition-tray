@@ -93,10 +93,35 @@ PlasmoidItem {
     property int epoch: 0
     property var pollEpoch: ({})
 
+    property var effectiveServicesCache: null
+    property var effectiveRadiosCache: null
+
     // The rows as they should be drawn: the helper's, with the pending
     // requests applied.
-    readonly property var effectiveServices: servicesRows === null ? null : Controls.effectiveServices(servicesRows, pending)
-    readonly property var effectiveRadios: radiosRows === null ? null : Controls.effectiveRadios(radiosRows, pending)
+    readonly property var effectiveServices: effectiveServicesRows()
+    readonly property var effectiveRadios: effectiveRadiosRows()
+
+    function effectiveServicesRows() {
+        if (servicesRows === null) {
+            effectiveServicesCache = null;
+            return null;
+        }
+        const next = Controls.effectiveServices(servicesRows, pending);
+        if (!Controls.sameRows(effectiveServicesCache, next))
+            effectiveServicesCache = next;
+        return effectiveServicesCache;
+    }
+
+    function effectiveRadiosRows() {
+        if (radiosRows === null) {
+            effectiveRadiosCache = null;
+            return null;
+        }
+        const next = Controls.effectiveRadios(radiosRows, pending);
+        if (!Controls.sameRows(effectiveRadiosCache, next))
+            effectiveRadiosCache = next;
+        return effectiveRadiosCache;
+    }
 
     // The panel's fixed sentences, from the one table the parity test pins.
     readonly property var controlStrings: Controls.strings(tr)
@@ -322,11 +347,15 @@ PlasmoidItem {
                 return;
             }
             if (isServices) {
-                servicesRows = out.doc === null ? null : out.doc.rows;
+                const nextServicesRows = out.doc === null ? null : out.doc.rows;
+                if (!Controls.sameRows(servicesRows, nextServicesRows))
+                    servicesRows = nextServicesRows;
                 servicesUnsupported = out.unsupported;
                 servicesError = out.error;
             } else {
-                radiosRows = out.doc;
+                const nextRadiosRows = out.doc;
+                if (!Controls.sameRows(radiosRows, nextRadiosRows))
+                    radiosRows = nextRadiosRows;
                 radiosUnsupported = out.unsupported;
                 radiosError = out.error;
             }
@@ -361,7 +390,9 @@ PlasmoidItem {
                 return;
             }
             try {
-                devices = JSON.parse(stdout);
+                const nextDevices = JSON.parse(stdout);
+                if (!Controls.sameRows(devices, nextDevices))
+                    devices = nextDevices;
                 lastError = "";
                 root.noticeKept();
             } catch (e) {
