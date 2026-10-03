@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Retry the Parrot release install check across mirrors and report exhausted mirror failures without blocking publication.
 - Clarify service status folding and start/stop/enable/disable read-back.
 - Keep the Plasma applet's device, service and radio row models stable when a poll returns unchanged data.
 - Correct README details on catalog installs, helper handover, lists and apply.
