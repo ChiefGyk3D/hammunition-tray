@@ -64,6 +64,20 @@ class Workflow(unittest.TestCase):
     def test_apt_in_the_container_is_non_interactive(self):
         self.assertIn("-e DEBIAN_FRONTEND=noninteractive", self.text)
 
+    def test_parrot_install_retries_fetch_failures_and_reports_exhaustion(self):
+        build = self.text[self.text.index("\n  build:"):self.text.index("\n  release:")]
+        self.assertIn("for attempt in 1 2 3", build)
+        self.assertIn("sleep 10", build)
+        self.assertIn("sleep 30", build)
+        self.assertIn("PARROT_MIRROR_ATTEMPT", build)
+        self.assertIn("https://parrotsec.org/docs/mirror-list", build)
+        self.assertIn("https://mirror.parrot.sh/direct", build)
+        self.assertIn("exit 75", build)
+        self.assertIn("if [ \"$status\" -ne 75 ]; then", build)
+        self.assertEqual(build.count("apt_fetch apt-get install"), 3)
+        self.assertIn("Parrot install check was skipped due to the mirror after 3 attempts.", build)
+        self.assertIn("test -f \"$d/metadata.json\"", build)
+
 
 class QtInTheWorkflows(unittest.TestCase):
     """The second package is built, checked and installed like the first."""
