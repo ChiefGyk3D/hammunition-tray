@@ -1,11 +1,20 @@
-# CI for the Hammunition Devices applet.
+# CI for the Hammunition Devices applet, the Qt tray and the device helper.
 #
-# Four jobs, each of which can actually fail. There is deliberately no
-# qmllint job: the qmllint on the development machine is a Qt5 shim that
-# cannot exec and *exits 0 while failing*, so a job running it would pass
-# forever without checking anything. A check nobody can trust is worse than
-# no check. If a Qt6 qmllint is ever available on the runner and verified
-# to go red on a broken file, add it then.
+# The jobs live in ChiefGyk3D/git-your-ship-together (GYST); its `CI green`
+# job is the check branch protection watches, once per call:
+# `ci / CI green` (Python) and `shell / CI green` (shell). The one job
+# kept here, `qt`, is the Qt tray against the archive's own PyQt6 and the
+# system python3, which is what the .deb depends on. GYST's `distros` input
+# runs the tests inside a fresh virtual environment, which cannot see the
+# archive's PyQt6, and the tray's own tests start the system python3, so
+# that job cannot be expressed there (tried in an ubuntu:24.04 container:
+# 105 failures, all "No module named PyQt6").
+#
+# There is deliberately no qmllint job: the qmllint on the development
+# machine is a Qt5 shim that cannot exec and *exits 0 while failing*, so a
+# job running it would pass forever without checking anything. If a Qt6
+# qmllint is ever available on the runner and verified to go red on a broken
+# file, add it then.
 name: CI
 
 on:
@@ -20,79 +29,69 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  package:
-    name: applet package
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      # node runs the applet's timelogic.js against the Qt tray's
-      # timelogic.py (tests/test_time_parity.py). The runner image ships
-      # node; requiring it turns a missing one into a failure, not a skip.
-      # The helper's tests are pytest, and pytest also runs the older unittest
-      # files, so one runner covers the whole directory. PyYAML is the helper's
-      # one dependency.
-      - name: Install the test dependencies
-        run: python -m pip install pytest PyYAML
-      - name: Static checks on the package, and the Time parity test
-        env:
-          HAMMUNITION_REQUIRE_NODE: "1"
-        run: node --version && python -m pytest tests -v
+  # Lint, mypy --strict over the helper, and every test on the oldest Python
+  # the helper supports and the newest, from a pip install of the package (so
+  # the console script is real). The engine is not installed: the helper must
+  # work without it, which its tests assert. node runs the applet's
+  # timelogic.js against the Qt tray's timelogic.py; HAMMUNITION_REQUIRE_NODE
+  # turns a missing node into a failure, not a skip. The Qt tests skip here
+  # (no PyQt6 in these environments) and run in `qt` below.
+  ci:
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/python-ci.yml@0e58a0e61ea8b3800d1cb0e6ed81bb860ace2094 # v1.6.3
+    permissions:
+      contents: read
+      id-token: write   # only to satisfy the called workflow's declared permissions; no Doppler here
+    with:
+      python-versions: '["3.11", "3.13"]'
+      install-command: |
+        python -m pip install --upgrade pip
+        python -m pip install ./devctl pytest PyYAML
+      test-command: |
+        test "$(hammunition-devctl --version)" = "hammunition-devctl contract 1"
+        node --version
+        HAMMUNITION_REQUIRE_NODE=1 python -m pytest tests -v
+      lint-install-command: pip install ruff==0.16.5
+      lint-command: ruff check --isolated --select E4,E7,E9,F devctl qt tests scripts
+      typecheck-install-command: pip install ./devctl mypy types-PyYAML
+      typecheck-command: |
+        mypy --strict --python-version 3.11 devctl/hammunition_devctl
+        mypy --strict --python-version 3.13 devctl/hammunition_devctl
+      docker-build: false
+      egress-policy: block
 
-  # The Qt tray against the archive's own PyQt6 and the system python3,
-  # which is what the .deb depends on. HAMMUNITION_REQUIRE_PYQT6 turns the
-  # smoke test's skip into a failure here, so a broken import cannot pass
-  # as "skipped" in the one job that exists to run it.
+  shell:
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/bash-ci.yml@0e58a0e61ea8b3800d1cb0e6ed81bb860ace2094 # v1.6.3
+    permissions:
+      contents: read
+    with:
+      # The installers, the package build, the Parrot install check and the
+      # helper's maintainer scripts are found by shebang, not listed.
+      shellcheck-severity: style   # what the old job ran: shellcheck's default
+      shfmt: false   # these scripts are hand-formatted; adopting shfmt is its own change
+      workflow-lint: false   # python-ci already lints the workflow files
+      egress-policy: block
+
   qt:
     name: Qt tray (system python3, archive PyQt6)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install PyQt6 and desktop-file-utils from the archive
         run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-pyqt6 desktop-file-utils python3-yaml python3-pytest
+      # HAMMUNITION_REQUIRE_PYQT6 turns the smoke test's skip into a failure,
+      # so a broken import cannot pass as "skipped" in the job that exists to
+      # run it.
       - name: Every test, PyQt6 required
         env:
           HAMMUNITION_REQUIRE_PYQT6: "1"
           HAMMUNITION_REQUIRE_NODE: "1"
           QT_QPA_PLATFORM: offscreen
         run: /usr/bin/python3 -m pytest tests -v
-
-  # The root helper on the oldest Python it supports and the newest, from a
-  # pip install of the package (so the console script is real), with the
-  # strict type check. The engine is not installed here: the helper must work
-  # without it, which is what its tests assert.
-  helper:
-    name: hammunition-devctl (Python ${{ matrix.python }})
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.11", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install the helper, and the test and type tools
-        run: python -m pip install ./devctl pytest mypy types-PyYAML
-      - name: The console script answers its contract number
-        run: test "$(hammunition-devctl --version)" = "hammunition-devctl contract 1"
-      - name: mypy --strict over the helper
-        run: python -m mypy --strict devctl/hammunition_devctl
-      - name: The helper's tests
-        run: python -m pytest tests/test_devctl.py tests/test_devctl_compat.py tests/test_devctl_devices.py tests/test_devctl_radio.py tests/test_devctl_services.py tests/test_linger.py tests/test_power_control.py tests/test_polkit_artifacts.py tests/test_helper_install.py -v
-
-  shell:
-    name: shellcheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install shellcheck
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-      - name: Lint the installers and the package build
-        run: shellcheck install.sh uninstall.sh packaging/debian/build.sh packaging/debian/devctl/postinst packaging/debian/devctl/prerm

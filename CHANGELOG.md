@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Move CI, the security scans and the release onto git-your-ship-together's reusable workflows (v1.6.3): `ci / CI green` and `shell / CI green` replace the applet, helper and shellcheck jobs, the Qt tray job stays local, the release gains cosign signatures and build provenance, and the Parrot install check moves to `scripts/parrot-install-check.sh` with its mirror retry unchanged.
 - Retry the Parrot release install check across mirrors and report exhausted mirror failures without blocking publication.
 - Clarify service status folding and start/stop/enable/disable read-back.
 - Keep the Plasma applet's device, service and radio row models stable when a poll returns unchanged data.
