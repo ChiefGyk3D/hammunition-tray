@@ -21,8 +21,9 @@ for attempt in 1 2 3; do
   if [ "$PARROT_MIRROR_ATTEMPT" -ge 2 ]; then
     # Official Parrot mirror list: https://parrotsec.org/docs/mirror-list
     find /etc/apt -type f \( -name "*.list" -o -name "*.sources" \) \
-      -exec sed -i -E "s@https?://[^/[:space:]]*parrot[^/[:space:]]*@https://mirror.parrot.sh/direct@g" {} +
+      -exec sed -i -E "s@https?://[^/[:space:]]*parrot[^/[:space:]]*(/direct)?@https://mirror.parrot.sh/direct@g" {} +
     grep -Rqs "https://mirror.parrot.sh/direct/parrot" /etc/apt
+    ! grep -Rqs "direct/direct" /etc/apt
   fi
   apt_fetch() {
     local log status

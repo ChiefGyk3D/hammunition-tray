@@ -144,6 +144,20 @@ class Workflow(unittest.TestCase):
         self.assertIn("Parrot install check was skipped due to the mirror after 3 attempts.", build)
         self.assertIn("test -f \"$d/metadata.json\"", build)
 
+    def test_the_mirror_rewrite_does_not_double_the_direct_path(self):
+        # deb.parrot.sh/direct/parrot became mirror.parrot.sh/direct/direct/parrot
+        # and the second attempt died with "does not have a Release file".
+        import re
+        import subprocess
+
+        m = re.search(r'-exec sed -i -E "([^"]+)"', PARROT)
+        self.assertIsNotNone(m)
+        for src in ("https://deb.parrot.sh/direct/parrot", "https://mirror.parrot.sh/direct/parrot"):
+            out = subprocess.run(["sed", "-E", m.group(1)], input="deb " + src + " echo main\n",
+                                 capture_output=True, text=True, check=True).stdout
+            self.assertEqual(out, "deb https://mirror.parrot.sh/direct/parrot echo main\n")
+        self.assertIn('! grep -Rqs "direct/direct" /etc/apt', PARROT)
+
     def test_the_parrot_hosts_are_named_for_the_egress_list(self):
         endpoints = release_inputs()["extra-allowed-endpoints"]
         for host in ("registry-1.docker.io:443", "deb.parrot.sh:443", "mirror.parrot.sh:443", "deb.debian.org:443"):
