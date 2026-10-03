@@ -373,6 +373,33 @@ been run in an Xfce, LXQt, LXDE, MATE or Cinnamon session; those panels
 are expected to host it through StatusNotifierItem or XEmbed, which Qt
 chooses between, but that is an expectation, not a measurement.
 
+## CI and release
+
+CI, the security scans and the release are the reusable workflows of
+[git-your-ship-together](https://github.com/ChiefGyk3D/git-your-ship-together)
+(GYST), pinned by commit at v1.6.3. `.github/workflows/ci.yml` calls its
+Python CI (ruff, `mypy --strict` over the helper on 3.11 and 3.13 typeshed, and
+every test on Python 3.11 and 3.13) and its shell CI (shellcheck over every
+tracked script); `security.yml` calls its gitleaks, CodeQL and Scorecard jobs
+(no secrets, so no Doppler); `release.yml` calls its artifact release, which
+builds the three `.deb` files, checks each on Parrot, and on a `v*` tag
+writes `SHA256SUMS`, signs every file with cosign, records build provenance
+and creates the GitHub release.
+
+One job stays here: `qt`, the Qt tray against the archive's own PyQt6 and the
+system python3. GYST runs distro tests in a fresh virtual environment, which
+cannot see the archive's PyQt6.
+
+Required checks for `main`:
+
+- `ci / CI green` (Python: lint, type check, tests on 3.11 and 3.13)
+- `shell / CI green` (shellcheck)
+- `Qt tray (system python3, archive PyQt6)`
+
+The security and release workflows are not merge gates. The release builds and
+verifies on a pull request that touches the packaging and never publishes
+there; the Parrot mirror's availability is not a merge gate.
+
 ## Status
 
 0.5.0. **The Controls panel and the helper's move here** is tested against fake helper

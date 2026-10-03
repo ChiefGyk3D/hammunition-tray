@@ -419,7 +419,7 @@ class Controls(unittest.TestCase):
     def test_each_poll_has_its_own_error_and_flag(self):
         main = self.main()
         for name in ("servicesError", "radiosError", "servicesUnsupported", "radiosUnsupported"):
-            self.assertIn(f"property", main[main.index(name) - 30 : main.index(name)])
+            self.assertIn("property", main[main.index(name) - 30 : main.index(name)])
         branch = main[main.index('if (kind === "services" || kind === "radios")') : main.index('if (kind === "control")')]
         self.assertNotIn("lastError", branch)
         self.assertNotIn("actionError", branch)

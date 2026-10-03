@@ -1,0 +1,32 @@
+# Secret scan, CodeQL (Python and the workflows themselves) and OpenSSF
+# Scorecard. The jobs live in ChiefGyk3D/git-your-ship-together. No Doppler:
+# nothing here needs a secret, so no identity is configured. No dependency
+# audit: the helper's one runtime dependency is the archive's PyYAML.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/security.yml@0e58a0e61ea8b3800d1cb0e6ed81bb860ace2094 # v1.6.3
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      id-token: write
+    with:
+      codeql-queries: security-extended,security-and-quality
+      pip-audit-requirements: ""
+      semgrep: false
+      scorecard: true
+      egress-policy: block
