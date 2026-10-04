@@ -29,23 +29,14 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
+from hammunition_devctl.model import DeviceEntry, Match, PowerMethod, QuietVerb
 from hammunition_devctl.rootfiles import atomic_write, dir_lock
 
 if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import Iterable, Mapping
 
-    from hammunition_devctl.bus import Match
-    from hammunition_devctl.devices import DeviceEntry
-
-PowerMethod = Literal["usb_deauthorize", "pci_runtime"]
-"""The engine's closed enum (D-056). A device file may carry either; only the
-first is implemented, and the second is refused when a verb would act on it."""
-
-QuietVerb = Literal["networkmanager_autoconnect"]
-"""The engine's closed vocabulary of consumers to hush. Schema-valid, refused
-when non-empty, exactly as in the engine."""
 
 __all__ = [
     "ALLOWED_ROOTS",

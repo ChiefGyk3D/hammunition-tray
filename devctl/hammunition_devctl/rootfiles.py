@@ -14,6 +14,15 @@ Two rules, both learned on the kept-off rules file (#119):
   run reads the first run's result instead of overwriting it. The directory
   itself is locked, so no lock file is left behind.
 
+**File modes.** Both callers write ``0644``, root-owned, and that is a
+decision, not a default: the kept-off udev rules are read by udev and the
+linger record by the unprivileged ``state`` and ``linger`` verbs that report
+it to the operator, so ``0600`` would blind them. Neither holds a secret (a
+device's name and USB identifier, an on/off flag). What is never allowed is a
+mode another account can *write*: ``atomic_write`` refuses any mode with a
+group or other write bit, so no caller can widen these files into
+something an unprivileged account could edit and have root act on.
+
 Neither decides *which* path may be written. Every caller admits its own
 paths with an exact-path guard before it gets here.
 """
@@ -31,7 +40,13 @@ __all__ = ["atomic_write", "dir_lock"]
 
 
 def atomic_write(path: Path, content: str, *, mode: int = 0o644) -> None:
-    """Replace ``path`` with ``content`` in one step, at ``mode``."""
+    """Replace ``path`` with ``content`` in one step, at ``mode``.
+
+    ``mode`` may let others read but never write: a group- or other-writable
+    mode is a ``ValueError`` before anything is created.
+    """
+    if mode & 0o022:
+        raise ValueError(f"refusing a group- or other-writable mode: {mode:#o}")
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:

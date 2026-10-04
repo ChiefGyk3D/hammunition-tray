@@ -40,7 +40,7 @@ jobs:
   # turns a missing node into a failure, not a skip. The Qt tests skip here
   # (no PyQt6 in these environments) and run in `qt` below.
   ci:
-    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/python-ci.yml@0e58a0e61ea8b3800d1cb0e6ed81bb860ace2094 # v1.6.3
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/python-ci.yml@9708d9d43bf0c27b8269c2387edc70c1efb22514 # v1.9.0
     permissions:
       contents: read
       id-token: write   # only to satisfy the called workflow's declared permissions; no Doppler here
@@ -63,7 +63,7 @@ jobs:
       egress-policy: block
 
   shell:
-    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/bash-ci.yml@0e58a0e61ea8b3800d1cb0e6ed81bb860ace2094 # v1.6.3
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/bash-ci.yml@9708d9d43bf0c27b8269c2387edc70c1efb22514 # v1.9.0
     permissions:
       contents: read
     with:
