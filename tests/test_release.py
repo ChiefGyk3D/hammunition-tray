@@ -49,8 +49,7 @@ if __name__ == "__main__":
 
 
 GYST = "ChiefGyk3D/git-your-ship-together/.github/workflows/"
-GYST_SHA = "9708d9d43bf0c27b8269c2387edc70c1efb22514"  # v1.9.0's commit, not its tag object
-FUZZ_SHA = "b4dec64ea0efba8b0604339e283adb25da6fd430"  # v1.10.0's commit: python-fuzz.yml first shipped there
+GYST_SHA = "b4dec64ea0efba8b0604339e283adb25da6fd430"  # v1.10.0's commit, not its tag object
 
 RELEASE = (ROOT / ".github/workflows/release.yml").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
@@ -75,11 +74,8 @@ class GystCallers(unittest.TestCase):
             calls = re.findall(r"uses: " + re.escape(GYST) + r"(\S+)@(\S+) # (\S+)", text)
             self.assertTrue(calls, name)
             for workflow, sha, version in calls:
-                want_sha, want_version = (
-                    (FUZZ_SHA, "v1.10.0") if workflow == "python-fuzz.yml" else (GYST_SHA, "v1.9.0")
-                )
-                self.assertEqual(sha, want_sha, f"{name}: {workflow}")
-                self.assertEqual(version, want_version)
+                self.assertEqual(sha, GYST_SHA, f"{name}: {workflow}")
+                self.assertEqual(version, "v1.10.0")
 
     def test_every_other_action_is_pinned_by_a_40_hex_sha(self):
         import re
