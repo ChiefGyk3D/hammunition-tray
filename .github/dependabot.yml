@@ -1,0 +1,19 @@
+# Keeps the pinned action SHAs, GYST's included, moving; each bump is read,
+# not just merged.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # A release that turns out to be malicious is usually pulled within days;
+    # waiting a week before proposing it costs nothing.
+    cooldown:
+      default-days: 7
+  # The helper's own pyproject (its one runtime dependency is PyYAML).
+  - package-ecosystem: pip
+    directory: /devctl
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
