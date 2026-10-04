@@ -17,45 +17,14 @@ it is not carried here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:  # pragma: no cover
-    from collections.abc import Mapping
-
-    from hammunition_devctl.devices import DeviceEntry
+from hammunition_devctl.model import AttachedDevice, DeviceEntry, Match
 
 __all__ = ["USB_DEVICES", "AttachedDevice", "Match", "match_devices", "read_usb_bus"]
 
 USB_DEVICES = Path("/sys/bus/usb/devices")
-
-
-@dataclass(frozen=True)
-class AttachedDevice:
-    """One USB device the kernel is reporting."""
-
-    vendor: str
-    product: str
-    manufacturer: str | None = None
-    product_string: str | None = None
-    serial: str | None = None
-    sysfs_path: str | None = None
-    """The node this record was read from. Kept because the power planner must
-    write to *the node it read*, not to one re-found by identifier: two
-    identical dongles share an identifier and differ only in address."""
-
-    @property
-    def identifier(self) -> str:
-        return f"{self.vendor}:{self.product}"
-
-
-@dataclass(frozen=True)
-class Match:
-    """A device-list entry the bus appears to contain."""
-
-    name: str
-    attached: AttachedDevice
 
 
 def _read(path: Path) -> str | None:

@@ -40,6 +40,7 @@ from typing import Any
 from hammunition_devctl import CONTRACT, radio, services
 from hammunition_devctl.bus import match_devices, read_usb_bus
 from hammunition_devctl.devices import Source, load_devices
+from hammunition_devctl.engine import engine_importable_as_root
 from hammunition_devctl.linger import (
     LINGER_RECORD,
     plan_linger,
@@ -281,51 +282,6 @@ _NO_ENGINE = (
     "Install Hammunition, or reinstall this helper with --interpreter pointing at "
     "the engine's Python."
 )
-
-
-def _engine_dir() -> str | None:
-    """Where the engine's ``hammunition`` package is on this interpreter's path,
-    found without importing it, or None when there is none."""
-    import importlib.util
-
-    try:
-        spec = importlib.util.find_spec("hammunition")
-    except (ImportError, ValueError):
-        return None
-    locations = list(spec.submodule_search_locations or []) if spec else []
-    return locations[0] if locations else None
-
-
-def engine_importable_as_root() -> bool:
-    """Whether this process may import the engine at all.
-
-    Importing runs the engine's code with this process's privileges, so as root
-    the tree it lives in gets the same D-056 check the helper's own package
-    gets: refused when *any* local account can write it, a warning when one
-    specific non-root account owns it (the documented install, a venv under
-    ``$HOME``). Unprivileged, there is nothing to protect and it is always
-    allowed.
-    """
-    if os.geteuid() != 0:
-        return True
-    where = _engine_dir()
-    if where is None:
-        return True  # nothing to import; the import itself will say so
-    finding = writable_including_symlink_target(where)
-    if finding is None:
-        return True
-    if finding.risk is WritabilityRisk.GROUP_OR_OTHER_WRITABLE:
-        print(
-            f"note: not importing the Hammunition engine as root: {describe_refusal([finding])}",
-            file=sys.stderr,
-        )
-        return False
-    print(
-        f"warning: the Hammunition engine at {where} is owned by a non-root account "
-        f"({finding.path}), and this process is importing it as root.",
-        file=sys.stderr,
-    )
-    return True
 
 
 def _gpstime() -> Any | None:

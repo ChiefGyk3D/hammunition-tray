@@ -14,11 +14,10 @@ so (``source: "engine-import"``); with neither it finds nothing
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from typing import Any, Literal, cast
 
-from hammunition_devctl import datafiles
-from hammunition_devctl.power import PowerMethod, QuietVerb
+from hammunition_devctl import datafiles, engine
+from hammunition_devctl.model import DeviceEntry, PowerMethod, QuietVerb, UsbId
 
 __all__ = ["DeviceEntry", "Source", "UsbId", "load_devices"]
 
@@ -28,24 +27,6 @@ _NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 _HEX4 = re.compile(r"[0-9a-f]{4}")
 _METHODS = ("usb_deauthorize", "pci_runtime")
 _QUIET = ("networkmanager_autoconnect",)
-
-
-@dataclass(frozen=True)
-class UsbId:
-    vendor: str
-    product: str | None = None
-    product_string: str | None = None
-
-
-@dataclass(frozen=True)
-class DeviceEntry:
-    """One parkable device or class, as the device file or the catalog says."""
-
-    name: str
-    summary: str
-    method: PowerMethod
-    quiet: tuple[QuietVerb, ...]
-    usb_ids: tuple[UsbId, ...]
 
 
 def _hex4(value: object) -> str | None:
@@ -97,9 +78,7 @@ def _entry_from(row: object, notes: list[str]) -> DeviceEntry | None:
 def _from_engine(notes: list[str]) -> dict[str, DeviceEntry] | None:
     """The same list, built from the engine's catalog. ``None`` when the
     engine is not importable or its catalog cannot be found."""
-    from hammunition_devctl import devctl
-
-    if not devctl.engine_importable_as_root():
+    if not engine.engine_importable_as_root():
         return None
     try:
         from hammunition.cli.main import find_catalog  # type: ignore[import-not-found,unused-ignore]
