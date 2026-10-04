@@ -22,6 +22,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: "37 5 * * 1"   # the weekly long fuzz run
   workflow_dispatch:
 
 permissions:
@@ -40,7 +42,7 @@ jobs:
   # turns a missing node into a failure, not a skip. The Qt tests skip here
   # (no PyQt6 in these environments) and run in `qt` below.
   ci:
-    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/python-ci.yml@9708d9d43bf0c27b8269c2387edc70c1efb22514 # v1.9.0
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/python-ci.yml@b4dec64ea0efba8b0604339e283adb25da6fd430 # v1.10.0
     permissions:
       contents: read
       id-token: write   # only to satisfy the called workflow's declared permissions; no Doppler here
@@ -52,6 +54,12 @@ jobs:
       test-command: |
         test "$(hammunition-devctl --version)" = "hammunition-devctl contract 1"
         node --version
+        # Atheris publishes wheels for CPython 3.12 to 3.14 only, so the fuzz
+        # targets' smoke test runs where it can be installed and skips on 3.11.
+        if python -c 'import sys; sys.exit(sys.version_info < (3, 12))'; then
+          python -m pip install atheris==3.1.0
+          export HAMMUNITION_REQUIRE_ATHERIS=1
+        fi
         HAMMUNITION_REQUIRE_NODE=1 python -m pytest tests -v
       lint-install-command: pip install ruff==0.16.5
       lint-command: ruff check --isolated --select E4,E7,E9,F devctl qt tests scripts
@@ -63,7 +71,7 @@ jobs:
       egress-policy: block
 
   shell:
-    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/bash-ci.yml@9708d9d43bf0c27b8269c2387edc70c1efb22514 # v1.9.0
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/bash-ci.yml@b4dec64ea0efba8b0604339e283adb25da6fd430 # v1.10.0
     permissions:
       contents: read
     with:
@@ -72,6 +80,20 @@ jobs:
       shellcheck-severity: style   # what the old job ran: shellcheck's default
       shfmt: false   # these scripts are hand-formatted; adopting shfmt is its own change
       workflow-lint: false   # python-ci already lints the workflow files
+      egress-policy: block
+
+  # Atheris targets under fuzz/ (the root helper's list readers, its sysfs path
+  # guard, the kept-off rules reader and the linger record), run by GYST for 30
+  # seconds each on a pull request and 10 minutes each on the weekly schedule. A
+  # crash fails the job and the input is uploaded as the fuzz-findings artifact.
+  fuzz:
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/python-fuzz.yml@b4dec64ea0efba8b0604339e283adb25da6fd430 # v1.10.0
+    permissions:
+      contents: read
+    with:
+      seconds-per-target: ${{ github.event_name == 'schedule' && 600 || 30 }}
+      timeout-minutes: ${{ github.event_name == 'schedule' && 60 || 30 }}
+      install-command: pip install ./devctl
       egress-policy: block
 
   qt:
