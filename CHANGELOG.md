@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Fuzzing: Atheris targets under `fuzz/` for the root helper's parsers (the devices and services allow-lists, the lexical sysfs path guard, the kept-off udev rules reader, the linger record and polkit wrapper), run by GYST's `python-fuzz.yml` (v1.10.0) from `ci.yml` on pull requests and weekly; `tests/test_fuzz_targets.py` keeps them honest.
 - Security and quality sweep of the CodeQL and Scorecard findings: the helper's modules no longer import each other in a ring (`model.py` holds the shared records, `engine.py` the engine-import gate, a test imports every module first in a fresh interpreter and asserts the import graph is acyclic); `atomic_write` refuses any group- or other-writable mode and the world-readable `0644` of the kept-off rules and the linger record is documented as a decision; the tests drop their mixed import forms; `SECURITY.md` and `.github/dependabot.yml` are added; the GYST callers move to v1.9.0.
 - Move CI, the security scans and the release onto git-your-ship-together's reusable workflows (v1.9.0): `ci / CI green` and `shell / CI green` replace the applet, helper and shellcheck jobs, the Qt tray job stays local, the release gains cosign signatures and build provenance, and the Parrot install check moves to `scripts/parrot-install-check.sh` with its mirror retry unchanged.
 - Retry the Parrot release install check across mirrors and report exhausted mirror failures without blocking publication.

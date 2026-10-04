@@ -390,6 +390,30 @@ One job stays here: `qt`, the Qt tray against the archive's own PyQt6 and the
 system python3. GYST runs distro tests in a fresh virtual environment, which
 cannot see the archive's PyQt6.
 
+### Fuzzing
+
+The helper runs as root, so what it parses is fuzzed. `fuzz/fuzz_*.py` are
+[Atheris](https://github.com/google/atheris) targets: the two allow-list
+readers (`devctl-devices.yaml`, `devctl-services.yaml`), the lexical sysfs
+path guard (an accepted path must still sit under an allowed root once
+normalised), the kept-off udev rules reader, and the linger record with the
+polkit wrapper script. The `fuzz` job of `ci.yml` calls GYST's `python-fuzz.yml`
+(30 seconds per target on a pull request, 10 minutes on the Monday schedule).
+Run one yourself in a CPython 3.12 to 3.14 environment on x86_64:
+
+```sh
+pip install ./devctl atheris==3.1.0
+python fuzz/fuzz_sysfs_guard.py -max_total_time=60 -max_len=4096
+```
+
+A crash prints the exception and writes a `crash-<sha>` file (in CI it is
+the `fuzz-findings` artifact). Do not just patch around it: turn the bytes in
+that file into an ordinary pytest test, watch it fail, fix the helper at the
+root cause, and keep the test. `tests/test_fuzz_targets.py` feeds every target
+a few seeds on each normal test run so a target cannot rot unnoticed. The
+`fuzz` job is not one of the required checks below; a crash on `main` shows
+up there.
+
 Required checks for `main`:
 
 - `ci / CI green` (Python: lint, type check, tests on 3.11 and 3.13)
