@@ -23,7 +23,9 @@ import pytest
 PKG_ROOT = Path(__file__).resolve().parent.parent / "devctl"
 PKG_DIR = PKG_ROOT / "hammunition_devctl"
 # __main__ runs the CLI on import, so it is checked by the graph test only.
-MODULES = sorted(p.stem for p in PKG_DIR.glob("*.py") if p.stem not in {"__init__", "__main__"})
+MODULES = sorted(
+    p.stem for p in PKG_DIR.glob("*.py") if p.stem not in {"__init__", "__main__"}
+)
 
 
 def test_the_module_list_is_not_empty() -> None:

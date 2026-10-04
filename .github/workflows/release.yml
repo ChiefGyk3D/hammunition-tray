@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   artifacts:
-    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/artifact-release.yml@0e58a0e61ea8b3800d1cb0e6ed81bb860ace2094 # v1.6.3
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/artifact-release.yml@9708d9d43bf0c27b8269c2387edc70c1efb22514 # v1.9.0
     permissions:
       contents: write      # the GitHub release and its assets
       id-token: write      # keyless signing and build provenance

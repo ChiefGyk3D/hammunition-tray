@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 
-- Move CI, the security scans and the release onto git-your-ship-together's reusable workflows (v1.6.3): `ci / CI green` and `shell / CI green` replace the applet, helper and shellcheck jobs, the Qt tray job stays local, the release gains cosign signatures and build provenance, and the Parrot install check moves to `scripts/parrot-install-check.sh` with its mirror retry unchanged.
+- Security and quality sweep of the CodeQL and Scorecard findings: the helper's modules no longer import each other in a ring (`model.py` holds the shared records, `engine.py` the engine-import gate, a test imports every module first in a fresh interpreter and asserts the import graph is acyclic); `atomic_write` refuses any group- or other-writable mode and the world-readable `0644` of the kept-off rules and the linger record is documented as a decision; the tests drop their mixed import forms; `SECURITY.md` and `.github/dependabot.yml` are added; the GYST callers move to v1.9.0.
+- Move CI, the security scans and the release onto git-your-ship-together's reusable workflows (v1.9.0): `ci / CI green` and `shell / CI green` replace the applet, helper and shellcheck jobs, the Qt tray job stays local, the release gains cosign signatures and build provenance, and the Parrot install check moves to `scripts/parrot-install-check.sh` with its mirror retry unchanged.
 - Retry the Parrot release install check across mirrors and report exhausted mirror failures without blocking publication.
 - Clarify service status folding and start/stop/enable/disable read-back.
 - Keep the Plasma applet's device, service and radio row models stable when a poll returns unchanged data.

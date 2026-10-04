@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hammunition_devctl import devctl, devices, linger, power
+from hammunition_devctl import devctl, devices, engine, linger, power
 from hammunition_devctl.devctl import main
 from hammunition_devctl.polkit import WritabilityFinding, WritabilityRisk
 
@@ -115,20 +115,20 @@ def test_the_engine_import_builds_the_same_entries_the_file_would(
 
 
 def test_unprivileged_the_engine_is_always_importable() -> None:
-    assert devctl.engine_importable_as_root() is True
+    assert engine.engine_importable_as_root() is True
 
 
 def test_root_refuses_to_import_an_engine_any_account_can_write(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(os, "geteuid", lambda: 0)
-    monkeypatch.setattr(devctl, "_engine_dir", lambda: "/home/op/src/hammunition")
+    monkeypatch.setattr(engine, "_engine_dir", lambda: "/home/op/src/hammunition")
     monkeypatch.setattr(
-        devctl,
+        engine,
         "writable_including_symlink_target",
         lambda path: WritabilityFinding(path, WritabilityRisk.GROUP_OR_OTHER_WRITABLE),
     )
-    assert devctl.engine_importable_as_root() is False
+    assert engine.engine_importable_as_root() is False
     assert "not importing the Hammunition engine as root" in capsys.readouterr().err
 
 
@@ -137,13 +137,13 @@ def test_root_warns_and_imports_an_engine_one_non_root_account_owns(
 ) -> None:
     """D-056's ruling, kept: the documented install is a venv under $HOME."""
     monkeypatch.setattr(os, "geteuid", lambda: 0)
-    monkeypatch.setattr(devctl, "_engine_dir", lambda: "/home/op/venv/lib/hammunition")
+    monkeypatch.setattr(engine, "_engine_dir", lambda: "/home/op/venv/lib/hammunition")
     monkeypatch.setattr(
-        devctl,
+        engine,
         "writable_including_symlink_target",
         lambda path: WritabilityFinding("/home/op/venv", WritabilityRisk.OWNED_BY_NON_ROOT),
     )
-    assert devctl.engine_importable_as_root() is True
+    assert engine.engine_importable_as_root() is True
     assert "owned by a non-root account" in capsys.readouterr().err
 
 
@@ -151,9 +151,9 @@ def test_root_imports_a_root_owned_engine_quietly(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(os, "geteuid", lambda: 0)
-    monkeypatch.setattr(devctl, "_engine_dir", lambda: "/usr/lib/python3/dist-packages/hammunition")
-    monkeypatch.setattr(devctl, "writable_including_symlink_target", lambda path: None)
-    assert devctl.engine_importable_as_root() is True
+    monkeypatch.setattr(engine, "_engine_dir", lambda: "/usr/lib/python3/dist-packages/hammunition")
+    monkeypatch.setattr(engine, "writable_including_symlink_target", lambda path: None)
+    assert engine.engine_importable_as_root() is True
     assert capsys.readouterr().err == ""
 
 
