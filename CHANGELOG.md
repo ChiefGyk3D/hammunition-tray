@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Code scanning, second pass: `devices.py` casts with the real `list[QuietVerb]` rather than a string, so the `QuietVerb` import is a visible use.
 - The GYST callers move from v1.9.0 to v1.10.0 (a no-op for the called workflows: their inputs are identical).
 - Fuzzing: Atheris targets under `fuzz/` for the root helper's parsers (the devices and services allow-lists, the lexical sysfs path guard, the kept-off udev rules reader, the linger record and polkit wrapper), run by GYST's `python-fuzz.yml` (v1.10.0) from `ci.yml` on pull requests and weekly; `tests/test_fuzz_targets.py` keeps them honest.
 - Security and quality sweep of the CodeQL and Scorecard findings: the helper's modules no longer import each other in a ring (`model.py` holds the shared records, `engine.py` the engine-import gate, a test imports every module first in a fresh interpreter and asserts the import graph is acyclic); `atomic_write` refuses any group- or other-writable mode and the world-readable `0644` of the kept-off rules and the linger record is documented as a decision; the tests drop their mixed import forms; `SECURITY.md` and `.github/dependabot.yml` are added; the GYST callers move to v1.9.0.
