@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- GYST callers to v1.12.0 (every input they pass exists in v1.12.0; v1.11.0 to v1.12.0 changed only `project-sync.yml`).
 - Code scanning, second pass: `devices.py` casts with the real `list[QuietVerb]` rather than a string, so the `QuietVerb` import is a visible use.
 - The GYST callers move from v1.9.0 to v1.10.0 (a no-op for the called workflows: their inputs are identical).
 - Fuzzing: Atheris targets under `fuzz/` for the root helper's parsers (the devices and services allow-lists, the lexical sysfs path guard, the kept-off udev rules reader, the linger record and polkit wrapper), run by GYST's `python-fuzz.yml` (v1.10.0) from `ci.yml` on pull requests and weekly; `tests/test_fuzz_targets.py` keeps them honest.

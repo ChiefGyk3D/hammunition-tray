@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
 
 GYST = "ChiefGyk3D/git-your-ship-together/.github/workflows/"
-GYST_SHA = "b4dec64ea0efba8b0604339e283adb25da6fd430"  # v1.10.0's commit, not its tag object
+GYST_SHA = "b282fe3035bb8716abb4f323cfede552b31e0ebd"  # v1.12.0's commit, not its tag object
 
 RELEASE = (ROOT / ".github/workflows/release.yml").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
@@ -75,7 +75,7 @@ class GystCallers(unittest.TestCase):
             self.assertTrue(calls, name)
             for workflow, sha, version in calls:
                 self.assertEqual(sha, GYST_SHA, f"{name}: {workflow}")
-                self.assertEqual(version, "v1.10.0")
+                self.assertEqual(version, "v1.12.0")
 
     def test_every_other_action_is_pinned_by_a_40_hex_sha(self):
         import re
