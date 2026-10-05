@@ -311,7 +311,7 @@ Architecture: all
 Installed-Size: $size
 Depends: plasma-workspace (>= 4:6), qml6-module-org-kde-plasma-plasma5support, qml6-module-org-kde-kirigami
 Maintainer: ChiefGyk3D <19499446+ChiefGyk3D@users.noreply.github.com>
-Homepage: https://github.com/ChiefGyk3D/hammunition-tray
+Homepage: https://github.com/Renegade-Penguin/hammunition-tray
 Description: KDE Plasma tray switches for Hammunition's parkable radio devices
  A switch per parkable device (a GPS receiver, a modem) that Hammunition has
  catalogued. It calls Hammunition's polkit-gated helper and runs nothing as

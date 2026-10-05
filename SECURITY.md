@@ -9,7 +9,7 @@ The latest tagged release is supported (currently v0.5.0). Fixes land on
 
 Please report security issues **privately**, not in a public issue or pull
 request. Use GitHub's private vulnerability reporting on this repository:
-[Report a vulnerability](https://github.com/ChiefGyk3D/hammunition-tray/security/advisories/new).
+[Report a vulnerability](https://github.com/Renegade-Penguin/hammunition-tray/security/advisories/new).
 
 Please include the affected verb, file or applet, what you expected and what
 happened, and the steps to reproduce it. Do not include a callsign, grid
