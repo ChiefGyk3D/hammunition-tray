@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- The project moved from the `ChiefGyk3D` user to the `Renegade-Penguin` organization (Hammunition #359, epic #357): every suite repository URL, badge and link now points at the organization.
 - GYST callers to v1.12.0 (every input they pass exists in v1.12.0; v1.11.0 to v1.12.0 changed only `project-sync.yml`).
 - Code scanning, second pass: `devices.py` casts with the real `list[QuietVerb]` rather than a string, so the `QuietVerb` import is a visible use.
 - The GYST callers move from v1.9.0 to v1.10.0 (a no-op for the called workflows: their inputs are identical).

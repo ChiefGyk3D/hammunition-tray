@@ -58,7 +58,7 @@ Installed-Size: $size
 Depends: plasma-workspace (>= 4:6), qml6-module-org-kde-plasma-plasma5support, qml6-module-org-kde-kirigami, qml6-module-org-kde-notifications
 Recommends: hammunition-devctl
 Maintainer: ChiefGyk3D <19499446+ChiefGyk3D@users.noreply.github.com>
-Homepage: https://github.com/ChiefGyk3D/hammunition-tray
+Homepage: https://github.com/Renegade-Penguin/hammunition-tray
 Description: KDE Plasma tray switches for Hammunition's parkable radio devices
  A switch per parkable device (a GPS receiver, a modem) that Hammunition has
  catalogued. It calls Hammunition's polkit-gated helper and runs nothing as
@@ -111,7 +111,7 @@ Installed-Size: $qsize
 Depends: python3 (>= 3.11), python3-pyqt6, pkexec | policykit-1
 Recommends: hammunition-devctl
 Maintainer: ChiefGyk3D <19499446+ChiefGyk3D@users.noreply.github.com>
-Homepage: https://github.com/ChiefGyk3D/hammunition-tray
+Homepage: https://github.com/Renegade-Penguin/hammunition-tray
 Description: Tray switches for Hammunition's parkable radio devices, outside Plasma
  The Plasma applet's switch for every other desktop with a system tray:
  Xfce, LXQt, LXDE, MATE and Cinnamon. A menu item per parkable device (a
@@ -163,7 +163,7 @@ Installed-Size: $dsize
 Depends: python3 (>= 3.11), python3-yaml
 Recommends: pkexec | policykit-1
 Maintainer: ChiefGyk3D <19499446+ChiefGyk3D@users.noreply.github.com>
-Homepage: https://github.com/ChiefGyk3D/hammunition-tray
+Homepage: https://github.com/Renegade-Penguin/hammunition-tray
 Description: Device helper for Hammunition: park devices, control services and radios
  The one program in the Hammunition suite that changes a device, a service or
  a radio on a person's behalf, behind one polkit action. The Plasma applet,

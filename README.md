@@ -1,7 +1,7 @@
 # Hammunition Devices
 
 A Plasma 6 system-tray applet for parking and waking the radio devices
-[Hammunition](https://github.com/ChiefGyk3D/Hammunition) has catalogued,
+[Hammunition](https://github.com/Renegade-Penguin/Hammunition) has catalogued,
 and the same switch as a tray icon for Xfce, LXQt, LXDE, MATE and Cinnamon
 ([below](#xfce-lxqt-lxde-mate-cinnamon-the-qt-tray)).
 
@@ -59,7 +59,7 @@ installers place too (the `.deb` as its own package, `hammunition-devctl`).
 hammunition install hammunition-tray
 ```
 
-**The Debian package**, from the [releases page](https://github.com/ChiefGyk3D/hammunition-tray/releases),
+**The Debian package**, from the [releases page](https://github.com/Renegade-Penguin/hammunition-tray/releases),
 for every account on the machine. Check it against the release's
 `SHA256SUMS` first:
 
