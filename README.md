@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Renegade-Penguin/Hammunition/main/docs/images/logo.png"
+       alt="Hammunition" width="300">
+</p>
+
 # Hammunition Devices
 
 A Plasma 6 system-tray applet for parking and waking the radio devices
