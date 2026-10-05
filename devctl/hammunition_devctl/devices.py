@@ -70,7 +70,7 @@ def _entry_from(row: object, notes: list[str]) -> DeviceEntry | None:
         name=name,
         summary=summary if isinstance(summary, str) else "",
         method=cast(PowerMethod, method),
-        quiet=tuple(cast("list[QuietVerb]", quiet_raw)),
+        quiet=tuple(cast(list[QuietVerb], quiet_raw)),
         usb_ids=tuple(ids),
     )
 
