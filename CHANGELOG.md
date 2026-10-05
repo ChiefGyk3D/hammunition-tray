@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- README: the helper's prerequisite now says when `hardware apply` writes the helper (only where no contract-1 helper answers), that the catalog units install it, and which device classes the engine catalog marks parkable (#12).
 - Keep the suite board current: a `project-sync` caller for GYST v1.12.0 (Hammunition #362) adds this repository's issues and pull requests to the Renegade-Penguin board, sets status and done date, and reconciles weekly.
 - The project moved from the `ChiefGyk3D` user to the `Renegade-Penguin` organization (Hammunition #359, epic #357): every suite repository URL, badge and link now points at the organization.
 - GYST callers to v1.12.0 (every input they pass exists in v1.12.0; v1.11.0 to v1.12.0 changed only `project-sync.yml`).

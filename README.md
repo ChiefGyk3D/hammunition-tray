@@ -43,11 +43,18 @@ waking one does, and goes through polkit exactly once per action.
 - Plasma 6.
 - The device helper, `/usr/local/libexec/hammunition-devctl`, and the polkit
   action authorising it ([below](#the-device-helper-hammunition-devctl)).
-  This repository installs both; Hammunition's `hardware apply` installs
-  its own copy of them too. Until one is there the applet says so rather
-  than showing switches that cannot work.
-- At least one catalogued device marked parkable and plugged in. Today that
-  is USB GNSS receivers; a WWAN modem class is expected to follow.
+  This repository installs both, and so do Hammunition's two tray units
+  (from this release's archive). `hammunition hardware apply` writes the
+  wrapper only where no helper answering `--version` with
+  `hammunition-devctl contract 1` is already there (and an existing polkit
+  action is not rewritten), and writes the device and system-service lists
+  either way. Until a helper is there the applet
+  says so rather than showing switches that cannot work.
+- At least one catalogued device marked parkable and plugged in. The engine's
+  catalog marks four USB classes parkable (`usb_deauthorize`): GNSS receivers,
+  Bluetooth controllers, cameras and WWAN modems. A PCI device, the field
+  laptop's `dell-dw5930e`, is catalogued with `pci_runtime`, which the helper
+  refuses.
 - **For the Time section, Hammunition 0.18.0 or later.** An older engine's
   helper does not know `time state`; the switches still work, and the
   section says "Update Hammunition to 0.18.0 or later…" once instead of
@@ -63,6 +70,10 @@ installers place too (the `.deb` as its own package, `hammunition-devctl`).
 ```sh
 hammunition install hammunition-tray
 ```
+
+The unit installs the helper too. `hammunition hardware apply` is then needed
+only for the device list (`/etc/hammunition/devctl-devices.yaml`) and the
+system-service list (`/etc/hammunition/devctl-services.yaml`) the helper reads.
 
 **The Debian package**, from the [releases page](https://github.com/Renegade-Penguin/hammunition-tray/releases),
 for every account on the machine. Check it against the release's
