@@ -1,6 +1,7 @@
 """The release job's version gate, runnable locally."""
 
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -68,16 +69,31 @@ class GystCallers(unittest.TestCase):
     """CI, release and security are GYST's reusable workflows, pinned by the
     commit (an annotated tag's own sha is a tag object, not a commit)."""
 
-    def test_every_gyst_call_is_pinned_by_commit_with_the_version_comment(self):
-        import re
+    STRICT = re.compile(
+        r"^uses: " + re.escape(GYST) + r"[a-z-]+\.yml@" + GYST_SHA + r" # v1\.15\.0$"
+    )
 
-        for name, text in (("ci", CI), ("release", RELEASE), ("security", SECURITY)):
-            self.assertIn("uses: " + GYST, text, name)
+    def gyst_problems(self, name, text):
+        """Every `uses:` line naming GYST, in any form, that is not the strict pinned form."""
+        problems = []
+        refs = re.findall(r"uses:\s*ChiefGyk3D/git-your-ship-together/\S+.*", text)
+        for ref in refs:
+            if not self.STRICT.match(ref):
+                problems.append(f"{name}: {ref!r}")
+        return refs, problems
+
+    def test_every_gyst_call_is_pinned_by_commit_with_the_version_comment(self):
         for name, text in ALL_WORKFLOWS.items():
-            calls = re.findall(r"uses: " + re.escape(GYST) + r"(\S+)@(\S+) # (\S+)", text)
-            for workflow, sha, version in calls:
-                self.assertEqual(sha, GYST_SHA, f"{name}: {workflow}")
-                self.assertEqual(version, "v1.15.0")
+            _, problems = self.gyst_problems(name, text)
+            self.assertEqual(problems, [])
+        for name in ("ci.yml", "release.yml", "security.yml"):
+            refs, _ = self.gyst_problems(name, ALL_WORKFLOWS[name])
+            self.assertTrue([r for r in refs if self.STRICT.match(r)], name)
+
+    def test_the_gyst_pin_check_rejects_a_floating_reference(self):
+        for bad in ("@main", "@v1.15.0", "@" + GYST_SHA, "@" + GYST_SHA + "  # v1.15.0", "@" + GYST_SHA + " # v1.14.0"):
+            text = "    uses: " + GYST + "ci.yml" + bad + "\n"
+            self.assertTrue(self.gyst_problems("bad.yml", text)[1], bad)
 
     def test_every_other_action_is_pinned_by_a_40_hex_sha(self):
         import re
