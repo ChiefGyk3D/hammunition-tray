@@ -75,7 +75,7 @@ class GystCallers(unittest.TestCase):
             self.assertTrue(calls, name)
             for workflow, sha, version in calls:
                 self.assertEqual(sha, GYST_SHA, f"{name}: {workflow}")
-                self.assertEqual(version, "v1.13.0")
+                self.assertEqual(version, "v1.15.0")
 
     def test_every_other_action_is_pinned_by_a_40_hex_sha(self):
         import re
