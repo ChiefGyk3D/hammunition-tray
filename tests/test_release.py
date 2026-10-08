@@ -1,6 +1,7 @@
 """The release job's version gate, runnable locally."""
 
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -49,11 +50,12 @@ if __name__ == "__main__":
 
 
 GYST = "ChiefGyk3D/git-your-ship-together/.github/workflows/"
-GYST_SHA = "fde2a491de5107c4edb953c8d24f04835c11cb0a"  # v1.13.0's commit, not its tag object
+GYST_SHA = "804400181a9d3e2f78dfcda5161e2bd960bc011a"  # v1.15.0's commit, not its tag object
 
 RELEASE = (ROOT / ".github/workflows/release.yml").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
 SECURITY = (ROOT / ".github/workflows/security.yml").read_text()
+ALL_WORKFLOWS = {f.name: f.read_text() for f in sorted((ROOT / ".github/workflows").glob("*.yml"))}
 PARROT = (ROOT / "scripts/parrot-install-check.sh").read_text()
 
 
@@ -67,20 +69,36 @@ class GystCallers(unittest.TestCase):
     """CI, release and security are GYST's reusable workflows, pinned by the
     commit (an annotated tag's own sha is a tag object, not a commit)."""
 
-    def test_every_gyst_call_is_pinned_by_commit_with_the_version_comment(self):
-        import re
+    STRICT = re.compile(
+        r"^uses: " + re.escape(GYST) + r"[a-z-]+\.yml@" + GYST_SHA + r" # v1\.15\.0$"
+    )
 
-        for name, text in (("ci", CI), ("release", RELEASE), ("security", SECURITY)):
-            calls = re.findall(r"uses: " + re.escape(GYST) + r"(\S+)@(\S+) # (\S+)", text)
-            self.assertTrue(calls, name)
-            for workflow, sha, version in calls:
-                self.assertEqual(sha, GYST_SHA, f"{name}: {workflow}")
-                self.assertEqual(version, "v1.13.0")
+    def gyst_problems(self, name, text):
+        """Every `uses:` line naming GYST, in any form, that is not the strict pinned form."""
+        problems = []
+        refs = re.findall(r"uses:\s*ChiefGyk3D/git-your-ship-together/\S+.*", text)
+        for ref in refs:
+            if not self.STRICT.match(ref):
+                problems.append(f"{name}: {ref!r}")
+        return refs, problems
+
+    def test_every_gyst_call_is_pinned_by_commit_with_the_version_comment(self):
+        for name, text in ALL_WORKFLOWS.items():
+            _, problems = self.gyst_problems(name, text)
+            self.assertEqual(problems, [])
+        for name in ("ci.yml", "release.yml", "security.yml"):
+            refs, _ = self.gyst_problems(name, ALL_WORKFLOWS[name])
+            self.assertTrue([r for r in refs if self.STRICT.match(r)], name)
+
+    def test_the_gyst_pin_check_rejects_a_floating_reference(self):
+        for bad in ("@main", "@v1.15.0", "@" + GYST_SHA, "@" + GYST_SHA + "  # v1.15.0", "@" + GYST_SHA + " # v1.14.0"):
+            text = "    uses: " + GYST + "ci.yml" + bad + "\n"
+            self.assertTrue(self.gyst_problems("bad.yml", text)[1], bad)
 
     def test_every_other_action_is_pinned_by_a_40_hex_sha(self):
         import re
 
-        for text in (CI, RELEASE, SECURITY):
+        for text in ALL_WORKFLOWS.values():
             for ref in re.findall(r"uses: (?!ChiefGyk3D/git-your-ship-together)\S+@(\S+)", text):
                 self.assertRegex(ref, r"^[0-9a-f]{40}$")
 
