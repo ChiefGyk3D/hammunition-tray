@@ -54,6 +54,7 @@ GYST_SHA = "804400181a9d3e2f78dfcda5161e2bd960bc011a"  # v1.15.0's commit, not i
 RELEASE = (ROOT / ".github/workflows/release.yml").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
 SECURITY = (ROOT / ".github/workflows/security.yml").read_text()
+ALL_WORKFLOWS = {f.name: f.read_text() for f in sorted((ROOT / ".github/workflows").glob("*.yml"))}
 PARROT = (ROOT / "scripts/parrot-install-check.sh").read_text()
 
 
@@ -71,8 +72,9 @@ class GystCallers(unittest.TestCase):
         import re
 
         for name, text in (("ci", CI), ("release", RELEASE), ("security", SECURITY)):
+            self.assertIn("uses: " + GYST, text, name)
+        for name, text in ALL_WORKFLOWS.items():
             calls = re.findall(r"uses: " + re.escape(GYST) + r"(\S+)@(\S+) # (\S+)", text)
-            self.assertTrue(calls, name)
             for workflow, sha, version in calls:
                 self.assertEqual(sha, GYST_SHA, f"{name}: {workflow}")
                 self.assertEqual(version, "v1.15.0")
@@ -80,7 +82,7 @@ class GystCallers(unittest.TestCase):
     def test_every_other_action_is_pinned_by_a_40_hex_sha(self):
         import re
 
-        for text in (CI, RELEASE, SECURITY):
+        for text in ALL_WORKFLOWS.values():
             for ref in re.findall(r"uses: (?!ChiefGyk3D/git-your-ship-together)\S+@(\S+)", text):
                 self.assertRegex(ref, r"^[0-9a-f]{40}$")
 
